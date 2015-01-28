@@ -1,7 +1,3 @@
-#pragma once
-#ifndef SRC_INCLUDE_FSUSAGE_H_INCLUDED
-#define SRC_INCLUDE_FSUSAGE_H_INCLUDED 1
-
 /* fsusage.h -- declarations for filesystem space usage info
    Copyright (C) 1991, 1992 Free Software Foundation, Inc.
 
@@ -18,6 +14,10 @@
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software Foundation,
    Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#pragma once
+#ifndef FSUSAGE_H
+#define FSUSAGE_H
 
 /* Space usage statistics for a filesystem.  Blocks are 512-byte. */
 struct fs_usage
@@ -39,5 +39,5 @@ struct fs_usage
 
 int get_fs_usage __P ((const TCHAR *path, const TCHAR *disk, struct fs_usage *fsp));
 
+#endif // FSUSAGE_H
 
-#endif // SRC_INCLUDE_FSUSAGE_H_INCLUDED

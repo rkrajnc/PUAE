@@ -9,11 +9,17 @@
  */
 
 #include <SDL/SDL.h>
+#ifdef __APPLE__
+#include <SDL_image.h>
+#else
 #include <SDL/SDL_image.h>
+#endif
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "menu.h"
 #include "sysconfig.h"
@@ -67,7 +73,12 @@ void menu_load_surface(SDL_Surface *newmenu) {
 	pMenu_Surface = newmenu;
 }
 
-//
+static void init_vsync(void) {
+	changed_prefs.gfx_framerate = 1;
+	changed_prefs.gfx_apmode[0].gfx_vsync = 1;
+	changed_prefs.gfx_apmode[0].gfx_vsyncmode = 1;
+}
+
 extern SDL_Surface *screen;
 #ifndef GP2X
 #define prSDLScreen screen
@@ -77,7 +88,7 @@ int gui_init (void) {
 #if 0
 	if (display == NULL) {
 		SDL_Init (SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
-		display = SDL_SetVideoMode(320,240,16,VIDEO_FLAGS);
+		display = SDL_SetVideoMode(640,480,16,VIDEO_FLAGS);
 #if SDL_UI_DEBUG > 0
 		write_log ("SDLUI: SDL_Init display init\n");
 #endif
@@ -87,6 +98,7 @@ int gui_init (void) {
 #endif
 	}
 #endif
+
 	SDL_JoystickEventState(SDL_ENABLE);
 	SDL_JoystickOpen(0);
 	SDL_ShowCursor(SDL_DISABLE);
@@ -156,6 +168,8 @@ int gui_init (void) {
 	}
 //	icon_tweaks			= SDL_LoadBMP("guidep/images/icon-tweaks.bmp");
 
+	init_vsync();
+
 	return 1;
 }
 
@@ -182,7 +196,7 @@ void gui_exit (void){
 void gui_display (int shortcut){
 
 	void* stor = display ? malloc(display->h * display->pitch) : 0;
-	if(stor) memcpy(stor, display->pixels, display->h * display->pitch);
+	if (stor) memcpy(stor, display->pixels, display->h * display->pitch);
 
 	if (tmpSDLScreen == NULL) {
 		tmpSDLScreen = SDL_DisplayFormat(display);
@@ -248,13 +262,17 @@ void gui_display (int shortcut){
 							toggle_fullscreen(0);
 							//SDL_Delay(100);
 							break;
+						} else {
+							// enter to select
+							ksel = 1; break;
 						}
 						case SDLK_ESCAPE:	mainloopdone = 1; break;
 					 	case SDLK_UP:		kup = 1; break;
 						case SDLK_DOWN:		kdown = 1; break;
 						case SDLK_LEFT:		kleft = 1; break;
 						case SDLK_RIGHT:	kright = 1; break;
-						case SDLK_b:		ksel = 1; break;
+						// space to run default
+						case SDLK_SPACE:	selected_item = menu_sel_run; ksel =1; break;
 						default: break;
 					}
 					break;
@@ -419,11 +437,13 @@ void gui_display (int shortcut){
 		need_redraw = 0;
 		SDL_Delay(20);
 	} //while done
-	if(stor) {
+
+	if (stor) {
 		memcpy(display->pixels, stor, display->h * display->pitch);
 		free(stor);
 		SDL_Flip(display);
 	}
+
 	SDL_EnableKeyRepeat(0, 0); /* disable keyrepeat again */
 //	return menu_exitcode;
 }
@@ -431,12 +451,12 @@ void gui_display (int shortcut){
 void write_text (int x, int y, const char* txt) {
 	char txtbuf[45];
 	size_t l = strlen(txt);
-	if(l > 44) {
-		memcpy(txtbuf, txt, 20);
-		memcpy(txtbuf + 20, "...", 3);
-		memcpy(txtbuf + 23, txt + l - 20, 21);
+	if (l > 44) {
+		memcpy (txtbuf, txt, 20);
+		memcpy (txtbuf + 20, "...", 3);
+		memcpy (txtbuf + 23, txt + l - 20, 21);
 	} else {
-		strcpy(txtbuf, txt);
+		strcpy (txtbuf, txt);
 	}
 	SDL_Surface* pText_Surface = TTF_RenderText_Solid(amiga_font, txtbuf, text_color);
 
@@ -446,7 +466,7 @@ void write_text (int x, int y, const char* txt) {
 	rect.h = pText_Surface->h;
 
 	SDL_BlitSurface (pText_Surface,NULL,tmpSDLScreen,&rect);
-	SDL_FreeSurface(pText_Surface);
+	SDL_FreeSurface (pText_Surface);
 }
 
 void blit_image (SDL_Surface* img, int x, int y) {
@@ -483,6 +503,25 @@ void gui_flicker_led (int led, int unitnum, int status)
 
 void gui_led (int led, int on)
 {
+	if (led >= LED_DF0 && led <= LED_DF3) {
+		//_stprintf (ptr , _T("%02d"), gui_data.drive_track[led - 1]);
+	} else if (led == LED_POWER) {
+	} else if (led == LED_HD) {
+	} else if (led == LED_CD) {
+	} else if (led == LED_FPS) {
+		/*double fps = (double)gui_data.fps / 10.0;
+		extern double p96vblank;
+		if (fps > 999.9)
+			fps = 999.9;
+		if (picasso_on)
+			_stprintf (ptr, _T("%.1f [%.1f]"), p96vblank, fps);
+		else
+			_stprintf (ptr, _T("FPS: %.1f"), fps);*/
+	} else if (led == LED_CPU) {
+		//_stprintf (ptr, _T("CPU: %.0f%%"), (double)((gui_data.idle) / 10.0));
+	} else if (led == LED_SND && gui_data.drive_disabled[3]) {
+	} else if (led == LED_MD) {
+	}
 }
 
 void gui_filename (int num, const char *name)
@@ -595,4 +634,3 @@ SDL_Surface* icon_exit;
 TTF_Font *amiga_font;
 SDL_Color text_color;
 SDL_Rect rect;
-

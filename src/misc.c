@@ -92,7 +92,7 @@ extern int isvsync_chipset (void);
 extern int isvsync_rtg (void);
 
 
-void getgfxoffset (int *dxp, int *dyp, int *mxp, int *myp)
+void getgfxoffset (float *dxp, float *dyp, float *mxp, float *myp)
 {
 	*dxp = 0;
 	*dyp = 0;
@@ -365,7 +365,7 @@ int target_cfgfile_load (struct uae_prefs *p, const TCHAR *filename, int type, i
 	if (type == 0) {
 		default_prefs (p, type);
 	}
-		
+
 	//regqueryint (NULL, "ConfigFile_NoAuto", &ct2);
 	v = cfgfile_load (p, fname, &type2, ct2, isdefault ? 0 : 1);
 	if (!v)
@@ -459,7 +459,7 @@ end:
 }
 
 // dinput
-int input_get_default_lightpen (struct uae_input_device *uid, int num, int port, int af, bool gp)
+int input_get_default_lightpen (struct uae_input_device *uid, int num, int port, int af, bool gp, bool joymouseswap)
 {
 /*        struct didata *did;
 
@@ -474,7 +474,7 @@ int input_get_default_lightpen (struct uae_input_device *uid, int num, int port,
         return 0;
 }
 
-int input_get_default_joystick_analog (struct uae_input_device *uid, int num, int port, int af, bool gp)
+int input_get_default_joystick_analog (struct uae_input_device *uid, int num, int port, int af, bool gp, bool joymouseswap)
 {
 /*        int j;
         struct didata *did;
@@ -1006,8 +1006,8 @@ dm.dmPelsHeight = 1024;
 dm.dmBitsPerPel = 32;
 dm.dmDisplayFrequency = 50;
 //dm.dmDisplayFlags =
-//dm.dmPosition = 
-//dm.dmDisplayOrientation = 
+//dm.dmPosition =
+//dm.dmDisplayOrientation =
 //			while (EnumDisplaySettingsEx (md->adapterid, idx, &dm, mode ? EDS_RAWMODE : 0)) {
 				int found = 0;
 				int idx2 = 0;
@@ -1078,7 +1078,7 @@ void updatedisplayarea (void)
 				S2X_refresh ();
 #endif
 			DirectDraw_Flip (0);
-		} 
+		}
 */
 }
 
@@ -1272,7 +1272,7 @@ bool vsync_busywait_do (int *freetime, bool lace, bool oddeven)
 // parser.c
 ///////////////////////////////////////////////////
 
-unsigned int flashscreen;   
+unsigned int flashscreen;
 
 void doflashscreen (void)
 {
@@ -1303,20 +1303,27 @@ uae_u32 getlocaltime (void)
 	return 0;
 }
 
-/*
-#ifndef HAVE_ISINF
-int isinf (double x)
-{
-        const int nClass = _fpclass (x);
-        int result;
-        if (nClass == _FPCLASS_NINF || nClass == _FPCLASS_PINF)
-                result = 1;
-        else
-                result = 0;
-        return result;
-}
+#ifndef isnan
+#define isnan(x) \
+	(sizeof (x) == sizeof (long double) ? isnan_ld (x) \
+	: sizeof (x) == sizeof (double) ? isnan_d (x) \
+	: isnan_f (x))
+
+static inline int isnan_f  (float       x) { return x != x; }
+static inline int isnan_d  (double      x) { return x != x; }
+static inline int isnan_ld (long double x) { return x != x; }
 #endif
-*/
+
+#ifndef isinf
+#define isinf(x) \
+	(sizeof (x) == sizeof (long double) ? isinf_ld (x) \
+	: sizeof (x) == sizeof (double) ? isinf_d (x) \
+	: isinf_f (x))
+
+static inline int isinf_f  (float       x) { return !isnan (x) && isnan (x - x); }
+static inline int isinf_d  (double      x) { return !isnan (x) && isnan (x - x); }
+static inline int isinf_ld (long double x) { return !isnan (x) && isnan (x - x); }
+#endif
 
 //fsdb_mywin
 bool my_issamevolume(const TCHAR *path1, const TCHAR *path2, TCHAR *path)

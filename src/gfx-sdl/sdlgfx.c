@@ -7,7 +7,7 @@
  * Copyright 2003-2007 Richard Drummond
  * Copyright 2006 Jochen Becher
  *
- * Partialy based on the UAE X interface (xwin.c)
+ * Partially based on the UAE X interface (xwin.c)
  *
  * Copyright 1995, 1996 Bernd Schmidt
  * Copyright 1996 Ed Hanway, Andre Beck, Samuel Devulder, Bruno Coste
@@ -267,11 +267,11 @@ unsigned int findString(char* in, char* list)
   while (*list != 0)
   {
     int length = strcspn(list," ");
-    
+
     if( thisLength == length )
       if (!strncmp(in,list,length))
         return 1;
-        
+
     list += length + 1;
   }
   return 0;
@@ -2195,7 +2195,7 @@ void setcapslockstate (int state)
 /*
  * Default inputdevice config for SDL mouse
  */
-int input_get_default_mouse (struct uae_input_device *uid, int num, int port, int af, bool gp, bool wheel)
+int input_get_default_mouse (struct uae_input_device *uid, int num, int port, int af, bool gp, bool wheel, bool joymouseswap)
 {
 	/* SDL supports only one mouse */
 	setid (uid, num, ID_AXIS_OFFSET + 0, 0, port, port ? INPUTEVENT_MOUSE2_HORIZ : INPUTEVENT_MOUSE1_HORIZ);

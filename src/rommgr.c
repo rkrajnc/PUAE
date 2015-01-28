@@ -71,6 +71,9 @@ void romlist_add (const TCHAR *path, struct romdata *rd)
 	rl2 = rl + romlist_cnt - 1;
 	rl2->path = my_strdup (path);
 	rl2->rd = rd;
+	struct romdata *rd2 = getromdatabyid (rd->id);
+	if (rd2 != rd && rd2) // replace "X" with parent name
+		rd->name = rd2->name;
 }
 
 
@@ -89,7 +92,7 @@ struct romdata *getromdatabypath (const TCHAR *path)
 	return NULL;
 }
 
-#define NEXT_ROM_ID 87
+#define NEXT_ROM_ID 89
 
 static struct romheader romheaders[] = {
 	{ _T("Freezer Cartridges"), 1 },
@@ -173,6 +176,8 @@ static struct romdata roms[] = {
 	{ _T("Arcadia Ninja Mission"),                            0,  0,  0,   0, _T("ARCADIA\0"),                 0, 84, 0,     0, ROMTYPE_ARCADIAGAME, 0,  2, NULL,                     0, {          0,          0,          0,          0,          0 }, NULL },
 	{ _T("Arcadia Sidewinder"),                               0,  0,  0,   0, _T("ARCADIA\0"),                 0, 85, 0,     0, ROMTYPE_ARCADIAGAME, 0,  2, NULL,                     0, {          0,          0,          0,          0,          0 }, NULL },
 	{ _T("Arcadia Leader Board Golf v2.5"),                   0,  0,  0,   0, _T("ARCADIA\0"),                 0, 86, 0,     0, ROMTYPE_ARCADIAGAME, 0,  2, NULL,                     0, {          0,          0,          0,          0,          0 }, NULL },
+	{ _T(" ROM Disabled"),                                    0,  0,  0,   0, _T("NOROM\0"),                   0, 87, 0,     0, ROMTYPE_NONE,        0,  0, NULL,            0xffffffff, {          0,          0,          0,          0,          0 }, _T("NOROM") },
+	{ _T("Arcadia Aaargh"),                                   0,  0,  0,   0, _T("ARCADIA\0"),                 0, 88, 0,     0, ROMTYPE_ARCADIAGAME, 0,  2, NULL,                     0, {          0,          0,          0,          0,          0 }, NULL },
 
 	{ _T("KS ROM v3.X (A4000)(Cloanto)"),                     3, 10, 45,  57, _T("A4000\0"),              524288, 46, 2 | 4, 0, ROMTYPE_KICK,        0,  0, NULL,            0x3ac99edc, { 0x3cbfc9e1, 0xfe396360, 0x157bd161, 0xde74fc90, 0x1abee7ec }, NULL },
 	{ _T("Freezer: Action Replay 1200"),                      0,  0,  0,   0, _T("AR\0"),                 262144, 47, 0,     0, ROMTYPE_AR,          0,  1, NULL,            0x8d760101, { 0x0F6AB834, 0x2810094A, 0xC0642F62, 0xBA42F78B, 0xC0B07E6A }, NULL },
@@ -184,12 +189,12 @@ static struct romdata roms[] = {
 	{ _T("Arcadia TenPlay 3.11"),                             0,  0,  0,   0, _T("ARCADIA\0"),                 0, 76, 0,     0, ROMTYPE_ARCADIABIOS, 0,  0, NULL,                     0, {          0,          0,          0,          0,          0 }, NULL },
 	{ _T("Arcadia TenPlay 4.00"),                             0,  0,  0,   0, _T("ARCADIA\0"),                 0, 77, 0,     0, ROMTYPE_ARCADIABIOS, 0,  0, NULL,                     0, {          0,          0,          0,          0,          0 }, NULL },
 	{ _T("Freezer: Action Replay Mk I v1.00"),                1,  0,  1,   0, _T("AR\0"),                  65536, 52, 0,     0, ROMTYPE_AR,          0,  1, NULL,            0x2d921771, { 0x1EAD9DDA, 0x2DAD2914, 0x6441F5EF, 0x72183750, 0x22E01248 }, NULL },
-	{ _T("A590/A2091 SCSI boot ROM"),                         6,  0,  6,   0, _T("A590\0A2091\0"),         16384, 53, 0,     0, ROMTYPE_A2091BOOT,   0,  0, NULL,            0x8396cf4e, { 0x5E03BC61, 0x8C862ABE, 0x7BF79723, 0xB4EEF4D2, 0x1859A0F2 }, NULL },
-	{ _T("A590/A2091 SCSI boot ROM"),                         6,  6,  6,   6, _T("A590\0A2091\0"),         16384, 54, 0,     0, ROMTYPE_A2091BOOT,   0,  0, NULL,            0x33e00a7a, { 0x739BB828, 0xE874F064, 0x9360F59D, 0x26B5ED3F, 0xBC99BB66 }, NULL },
-	{ _T("A590/A2091 SCSI boot ROM"),                         7,  0,  7,   0, _T("A590\0A2091\0"),         16384, 55, 0,     0, ROMTYPE_A2091BOOT,   0,  0, NULL,            0x714a97a2, { 0xE50F01BA, 0xF2899892, 0x85547863, 0x72A82C33, 0x3C91276E }, NULL },
-	{ _T("A590/A2091 SCSI Guru boot ROM"),                    6, 14,  6,  14, _T("A590\0A2091\0"),         32768, 56, 0,     0, ROMTYPE_A2091BOOT,   0,  0, NULL,            0x04e52f93, { 0x6DA21B6F, 0x5E8F8837, 0xD64507CD, 0x8A4D5CDC, 0xAC4F426B }, NULL },
-	{ _T("A4091 SCSI boot ROM"),                             40,  9, 40,   9, _T("A4091\0"),               32768, 57, 0,     0, ROMTYPE_A4091BOOT,   0,  0, NULL,            0x00000000, {          0,          0,          0,          0,          0 }, NULL },
-	{ _T("A4091 SCSI boot ROM"),                             40, 13, 40,  13, _T("A4091\0"),               32768, 58, 0,     0, ROMTYPE_A4091BOOT,   0,  0, _T("391592-02"), 0x54cb9e85, { 0x3CE66919, 0xF6FD6797, 0x4923A12D, 0x91B730F1, 0xFFB4A7BA }, NULL },
+	{ _T("A590/A2091 ROM 6.0"),                               6,  0,  6,   0, _T("A590\0A2091\0"),         16384, 53, 0,     0, ROMTYPE_A2091BOOT,   0,  0, NULL,            0x8396cf4e, { 0x5E03BC61, 0x8C862ABE, 0x7BF79723, 0xB4EEF4D2, 0x1859A0F2 }, NULL },
+	{ _T("A590/A2091 ROM 6.6"),                               6,  6,  6,   6, _T("A590\0A2091\0"),         16384, 54, 0,     0, ROMTYPE_A2091BOOT,   0,  0, NULL,            0x33e00a7a, { 0x739BB828, 0xE874F064, 0x9360F59D, 0x26B5ED3F, 0xBC99BB66 }, NULL },
+	{ _T("A590/A2091 ROM 7.0"),                               7,  0,  7,   0, _T("A590\0A2091\0"),         16384, 55, 0,     0, ROMTYPE_A2091BOOT,   0,  0, NULL,            0x714a97a2, { 0xE50F01BA, 0xF2899892, 0x85547863, 0x72A82C33, 0x3C91276E }, NULL },
+	{ _T("A590/A2091 Guru ROM 6.14"),                         6, 14,  6,  14, _T("A590\0A2091\0"),         32768, 56, 0,     0, ROMTYPE_A2091BOOT,   0,  0, NULL,            0x04e52f93, { 0x6DA21B6F, 0x5E8F8837, 0xD64507CD, 0x8A4D5CDC, 0xAC4F426B }, NULL },
+	{ _T("A4091 SCSI ROM 40.9"),                             40,  9, 40,   9, _T("A4091\0"),               32768, 57, 0,     0, ROMTYPE_A4091BOOT,   0,  0, NULL,            0x00000000, {          0,          0,          0,          0,          0 }, NULL },
+	{ _T("A4091 SCSI ROM 40.13"),                            40, 13, 40,  13, _T("A4091\0"),               32768, 58, 0,     0, ROMTYPE_A4091BOOT,   0,  0, _T("391592-02"), 0x54cb9e85, { 0x3CE66919, 0xF6FD6797, 0x4923A12D, 0x91B730F1, 0xFFB4A7BA }, NULL },
 	{ _T("KS ROM v1.4 (A3000)"),                              1,  4, 36,  16, _T("A3000\0"),              524288, 59, 3,     0, ROMTYPE_KICK,        0,  0, NULL,            0xbc0ec13f, { 0xF76316BF, 0x36DFF14B, 0x20FA349E, 0xD02E4B11, 0xDD932B07 }, NULL },
 	{ _T("Freezer: Action Cart. Super IV Pro (+ROM v4.3)"),   4,  3,  4,   3, _T("SUPERIV\0"),            170368, 60, 0,     0, ROMTYPE_SUPERIV,     0,  1, NULL,            0xe668a0be, { 0x633A6E65, 0xA93580B8, 0xDDB0BE9C, 0x9A64D4A1, 0x7D4B4801 }, NULL },
 	{ _T("KS ROM v3.1 (A3000)"),                              3,  1, 40,  68, _T("A3000\0"),              524288, 61, 2,     0, ROMTYPE_KICK,        0,  0, NULL,            0xefb239cc, { 0xF8E210D7, 0x2B4C4853, 0xE0C9B85D, 0x223BA20E, 0x3D1B36EE }, NULL },
@@ -207,7 +212,7 @@ static struct romdata roms[] = {
 	{ _T("KS ROM v2.04 (A3000)"),                             2,  4, 37, 175, _T("A3000\0"),              524288, 71, 8,     0, ROMTYPE_KICK,        0,  0, NULL,            0x234a7233, { 0xd82ebb59, 0xafc53540, 0xddf2d718, 0x7ecf239b, 0x7ea91590 }, NULL },
 	{ _T("The Diagnostic 2.0 (Logica)"),                      2,  0,  2,   0, _T("LOGICA\0"),             524288, 72, 0,     0, ROMTYPE_KICK_SPC,    0,  0, NULL,            0x8484f426, { 0xba10d161, 0x66b2e2d6, 0x177c979c, 0x99edf846, 0x2b21651e }, NULL },
 	{ _T("Cloanto Amiga Forever 2010 ROM key"),               0,  0,  0,   0, NULL,                         1544, 73, 0,     1, ROMTYPE_KEY,         0,  0, NULL,            0x8c4dd05c, { 0x05034f62, 0x0b5bb7b2, 0x86954ea9, 0x164fdb90, 0xfb2897a4 }, NULL },
-    { _T("CD32 MPEG Cartridge ROM"),						  3,  1, 40,  22, _T("CD32FMV\0"), 			  262144, 74, 1, 	 0, ROMTYPE_CD32CART, 	 0,  0, _T("391777-01"),  0xc2002d08, { 0xa1ca2d71 ,0x7efb6c60, 0xb9bfabeb, 0x0280ae97, 0xe82b0cb9 }, NULL },
+    { _T("CD32 MPEG Cartridge ROM"),							 3,  1, 40,  22, _T("CD32FMV\0"), 			  262144, 74, 1, 	 0, ROMTYPE_CD32CART, 	 0,  0, _T("391777-01"),  0xc2002d08, { 0xa1ca2d71 ,0x7efb6c60, 0xb9bfabeb, 0x0280ae97, 0xe82b0cb9 }, NULL },
 
 	/* Format of the ALTROMPN() macro: (Please keep valid!)
 	 *      (id,grp,num,       size, flags,                       pn,              crc32,      sha1[0],    sha1[1],    sha1[2],    sha1[3],    sha1[4]   ) */
@@ -340,10 +345,12 @@ static void romlist_cleanup (void)
 		}
 		i++;
 	}
+#if 0
 	for (i = 0; i < romlist_cnt; i++) {
 		struct romlist *rll = &rl[i];
-		//write_log (_T("%s (%s)\n"), rll->rd->name, rll->path);
+		write_log (_T("%d: %08x %s (%s)\n"), rll->rd->id, rll->rd->group, rll->rd->name, rll->path);
 	}
+#endif
 }
 
 struct romlist **getromlistbyident (int ver, int rev, int subver, int subrev, const TCHAR *model, int romflags, bool all)
@@ -700,13 +707,21 @@ STATIC_INLINE int notcrc32 (uae_u32 crc32)
 	return 0;
 }
 
-struct romdata *getromdatabycrc (uae_u32 crc32)
+struct romdata *getromdatabycrc (uae_u32 crc32, bool allowgroup)
 {
 	int i = 0;
 	while (roms[i].name) {
 		if (roms[i].group == 0 && crc32 == roms[i].crc32 && !notcrc32(crc32))
 			return &roms[i];
 		i++;
+	}
+	if (allowgroup) {
+		i = 0;
+		while (roms[i].name) {
+			if (roms[i].group && crc32 == roms[i].crc32 && !notcrc32(crc32))
+				return &roms[i];
+			i++;
+		}
 	}
 	return 0;
 }
@@ -938,12 +953,14 @@ void romwarning (const int *ids)
 	i = 0;
 	while (ids[i] >= 0) {
 		struct romdata *rd = getromdatabyid (ids[i]);
-		getromname (rd, tmp1);
-		_tcscat (tmp2, _T("- "));
-		_tcscat (tmp2, tmp1);
-		_tcscat (tmp2, _T("\n"));
-		if (rd->type & (ROMTYPE_A2091BOOT | ROMTYPE_A4091BOOT))
-			exp++;
+		if (!(rd->type & ROMTYPE_NONE)) {
+			getromname (rd, tmp1);
+			_tcscat (tmp2, _T("- "));
+			_tcscat (tmp2, tmp1);
+			_tcscat (tmp2, _T("\n"));
+			if (rd->type & (ROMTYPE_A2091BOOT | ROMTYPE_A4091BOOT))
+				exp++;
+		}
 		i++;
 	}
 	if (exp)
@@ -1006,8 +1023,10 @@ static void descramble (const struct romdata *rd, uae_u8 *data, int size, int od
 {
 	int flags = rd->type;
 
+#ifdef ACTION_REPLAY
 	if (flags & (ROMTYPE_NORDIC | ROMTYPE_XPOWER))
 		descramble_nordicpro (data, size, odd);
+#endif
 }
 
 static int read_rom_file (uae_u8 *buf, const struct romdata *rd)
@@ -1034,10 +1053,10 @@ static int read_rom_file (uae_u8 *buf, const struct romdata *rd)
 	return 1;
 }
 
-struct zfile *read_rom (struct romdata **prd)
+struct zfile *read_rom (struct romdata *prd)
 {
-	struct romdata *rd2 = *prd;
-	struct romdata *rd = *prd;
+	struct romdata *rd2 = prd;
+	struct romdata *rd = prd;
 	TCHAR *name;
 	int id = rd->id;
 	uae_u32 crc32;
@@ -1052,7 +1071,6 @@ struct zfile *read_rom (struct romdata **prd)
 			break;
 		rd2--;
 	}
-	*prd = rd2;
 	size = rd2->size;
 	crc32 = rd2->crc32;
 	name = rd->name;
@@ -1172,7 +1190,7 @@ struct zfile *read_rom_name (const TCHAR *filename)
 	for (i = 0; i < romlist_cnt; i++) {
 		if (!_tcsicmp (filename, rl[i].path)) {
 			struct romdata *rd = rl[i].rd;
-			f = read_rom (&rd);
+			f = read_rom (rd);
 			if (f)
 				return f;
 		}
@@ -1229,7 +1247,7 @@ struct zfile *read_rom_name_guess (const TCHAR *filename)
 			continue;
 		if (!_tcsicmp (name, n + j)) {
 			struct romdata *rd = rl[i].rd;
-			f = read_rom (&rd);
+			f = read_rom (rd);
 			if (f) {
 				write_log (_T("ROM %s not found, using %s\n"), filename, rl[i].path);
 				return f;
@@ -1300,7 +1318,9 @@ int configure_rom (struct uae_prefs *p, const int *rom, int msg)
 		_tcscpy (p->romfile, path);
 	if (rd->type & (ROMTYPE_EXTCD32 | ROMTYPE_EXTCDTV | ROMTYPE_ARCADIABIOS))
 		_tcscpy (p->romextfile, path);
+#ifdef ACTION_REPLAY
 	if (rd->type & (ROMTYPE_CD32CART | ROMTYPE_ARCADIAGAME | ROMTYPE_HRTMON | ROMTYPE_XPOWER | ROMTYPE_NORDIC | ROMTYPE_AR | ROMTYPE_SUPERIV))
 		_tcscpy (p->cartfile, path);
+#endif
 	return 1;
 }

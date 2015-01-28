@@ -1,6 +1,15 @@
+/*
+ * UAE - The Un*x Amiga Emulator
+ *
+ * SCSI emulation (not uaescsi.device)
+ *
+ * Copyright 2007 Toni Wilen
+ *
+ */
+
 #pragma once
-#ifndef SRC_INCLUDE_SCSI_H_INCLUDED
-#define SRC_INCLUDE_SCSI_H_INCLUDED 1
+#ifndef SCSI_H
+#define SCSI_H
 
 #include "filesys.h"
 #include "blkdev.h"
@@ -116,4 +125,4 @@ extern void tape_media_change (int unitnum, struct uaedev_config_info*);
 #define SCSI_STATUS_QUEUE_FULL             0x28
 #define SCSI_STATUS_ACA_ACTIVE             0x30
 
-#endif // SRC_INCLUDE_SCSI_H_INCLUDED
+#endif // SCSI_H

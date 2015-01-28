@@ -1,7 +1,7 @@
 /*
  * PUAE - The Un*x Amiga Emulator
  *
- * Interface to the SDL GUI                
+ * Interface to the SDL GUI
  * (initially was for GP2X)
  *
  * Copyright 2006 Mustafa TUFAN
@@ -9,19 +9,33 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#ifdef __APPLE__
+#define _DARWIN_C_SOURCE
+#endif
+#include <sys/stat.h>
+#ifdef __APPLE__
+#define st_mtim st_mtimespec
+#undef _DARWIN_C_SOURCE
+#endif
+
 #include <sys/time.h>
+#include <unistd.h>
 #include "sysconfig.h"
 #include "sysdeps.h"
 
 #include "options.h"
 #include <SDL/SDL.h>
+#ifdef __APPLE__
+#include <SDL_image.h>
+#include <SDL_ttf.h>
+#else
 #include <SDL/SDL_image.h>
 #include <SDL/SDL_ttf.h>
+#endif
 #include "button_mappings.h"
 #include <dirent.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include "menu.h"
 
 

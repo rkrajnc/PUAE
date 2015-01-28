@@ -385,13 +385,13 @@ void cd32_fmv_init (uaecptr start)
 	struct romdata *rd;
 	struct zfile *z;
 
-	write_log (_T("CD32 FMV mapped @$%lx\n"), start);
+	write_log (_T("CD32 FMV mapped @$%x\n"), start);
 	if (start != fmv_start)
 		return;
 	if (!rl)
 		return;
 	rd = rl->rd;
-	z = read_rom (&rd);
+	z = read_rom (rd);
 	if (z) {
 		write_log (_T("CD32 FMV ROM %d.%d\n"), rd->ver, rd->rev);
 		rom = mapped_malloc (fmv_size, _T("fast"));

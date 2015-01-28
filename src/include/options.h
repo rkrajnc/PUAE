@@ -1,7 +1,3 @@
-#pragma once
-#ifndef SRC_INCLUDE_OPTIONS_H_INCLUDED
-#define SRC_INCLUDE_OPTIONS_H_INCLUDED 1
-
 /*
  * UAE - The Un*x Amiga Emulator
  *
@@ -11,8 +7,12 @@
  * Copyright 1995-2001 Bernd Schmidt
  */
 
+#pragma once
+#ifndef OPTIONS_H
+#define OPTIONS_H
+
 #define UAEMAJOR 2
-#define UAEMINOR 7
+#define UAEMINOR 8
 #define UAESUBREV 1
 
 #include "uae_types.h"
@@ -41,7 +41,7 @@ struct strlist {
 #define MAX_TOTAL_SCSI_DEVICES 8
 
 /* maximum number native input devices supported (single type) */
-#define MAX_INPUT_DEVICES 16
+#define MAX_INPUT_DEVICES 20
 /* maximum number of native input device's buttons and axles supported */
 #define MAX_INPUT_DEVICE_EVENTS 256
 /* 4 different customization settings */
@@ -104,6 +104,17 @@ struct jport {
 #define TABLET_OFF 0
 #define TABLET_MOUSEHACK 1
 #define TABLET_REAL 2
+
+#ifdef WITH_SLIRP
+#define MAX_SLIRP_REDIRS 32
+struct slirp_redir
+{
+	int proto;
+	int srcport;
+	int dstport;
+	unsigned long addr;
+};
+#endif
 
 struct cdslot
 {
@@ -257,6 +268,31 @@ struct apmode
 #ifndef HAS_UAE_PREFS_STRUCT
 # define HAS_UAE_PREFS_STRUCT 1
 #endif // HAS_UAEPREFS_STRUCT
+
+
+struct gfx_filterdata
+{
+	int gfx_filter;
+	TCHAR gfx_filtershader[2 * MAX_FILTERSHADERS + 1][MAX_DPATH];
+	TCHAR gfx_filtermask[2 * MAX_FILTERSHADERS + 1][MAX_DPATH];
+	TCHAR gfx_filteroverlay[MAX_DPATH];
+	struct wh gfx_filteroverlay_pos;
+	int gfx_filteroverlay_overscan;
+	int gfx_filter_scanlines;
+	int gfx_filter_scanlineratio;
+	int gfx_filter_scanlinelevel;
+	float gfx_filter_horiz_zoom, gfx_filter_vert_zoom;
+	float gfx_filter_horiz_zoom_mult, gfx_filter_vert_zoom_mult;
+	float gfx_filter_horiz_offset, gfx_filter_vert_offset;
+	int gfx_filter_filtermode;
+	int gfx_filter_bilinear;
+	int gfx_filter_noise, gfx_filter_blur;
+	int gfx_filter_saturation, gfx_filter_luminance, gfx_filter_contrast, gfx_filter_gamma;
+	int gfx_filter_keep_aspect, gfx_filter_aspect;
+	int gfx_filter_autoscale;
+	int gfx_filter_keep_autoscale_aspect;
+};
+
 struct uae_prefs {
 
 	struct strlist *all_lines;
@@ -335,6 +371,7 @@ struct uae_prefs {
 	struct wh gfx_size;
 	struct wh gfx_size_win_xtra[6];
 	struct wh gfx_size_fs_xtra[6];
+	bool gfx_autoresolution_vga;
 	int gfx_autoresolution;
 	int gfx_autoresolution_delay;
 	int gfx_autoresolution_minv, gfx_autoresolution_minh;
@@ -343,7 +380,7 @@ struct uae_prefs {
 	int gfx_resolution;
 	int gfx_vresolution;
 	int gfx_lores_mode;
-	int gfx_scanlines;
+	int gfx_pscanlines, gfx_iscanlines;
 	int gfx_xcenter, gfx_ycenter;
 	int gfx_xcenter_pos, gfx_ycenter_pos;
 	int gfx_xcenter_size, gfx_ycenter_size;
@@ -355,25 +392,7 @@ struct uae_prefs {
 	int gfx_extrawidth;
 	bool lightboost_strobo;
 
-	int gfx_filter;
-	TCHAR gfx_filtershader[2 * MAX_FILTERSHADERS + 1][MAX_DPATH];
-	TCHAR gfx_filtermask[2 * MAX_FILTERSHADERS + 1][MAX_DPATH];
-	TCHAR gfx_filteroverlay[MAX_DPATH];
-	struct wh gfx_filteroverlay_pos;
-	int gfx_filteroverlay_overscan;
-	int gfx_filter_scanlines;
-	int gfx_filter_scanlineratio;
-	int gfx_filter_scanlinelevel;
-	float gfx_filter_horiz_zoom, gfx_filter_vert_zoom;
-	float gfx_filter_horiz_zoom_mult, gfx_filter_vert_zoom_mult;
-	float gfx_filter_horiz_offset, gfx_filter_vert_offset;
-	int gfx_filter_filtermode;
-	int gfx_filter_bilinear;
-	int gfx_filter_noise, gfx_filter_blur;
-	int gfx_filter_saturation, gfx_filter_luminance, gfx_filter_contrast, gfx_filter_gamma;
-	int gfx_filter_keep_aspect, gfx_filter_aspect;
-	int gfx_filter_autoscale;
-	int gfx_filter_keep_autoscale_aspect;
+	struct gfx_filterdata gf[2];
 
 	float rtg_horiz_zoom_mult;
 	float rtg_vert_zoom_mult;
@@ -414,7 +433,7 @@ struct uae_prefs {
 	int turbo_emulation;
 	bool headless;
 	int filesys_limit;
-	int filesys_max_name;
+	unsigned int filesys_max_name;
 	int filesys_max_file_size;
 
 	int cs_compatible;
@@ -440,7 +459,6 @@ struct uae_prefs {
 	int cs_deniserev;
 	int cs_mbdmac;
 	bool cs_cdtvscsi;
-	bool cs_a2091, cs_a4091;
 	bool cs_df0idhw;
 	bool cs_slowmemisfast;
 	bool cs_resetwarning;
@@ -456,6 +474,12 @@ struct uae_prefs {
 	uae_u32 romextfile2addr;
 	TCHAR romextfile2[MAX_DPATH];
 	TCHAR romextident[256];
+	TCHAR a2091romfile[MAX_DPATH];
+	TCHAR a2091romident[256];
+	bool a2091;
+	TCHAR a4091romfile[MAX_DPATH];
+	TCHAR a4091romident[256];
+	bool a4091;
 	TCHAR flashfile[MAX_DPATH];
 	TCHAR rtcfile[MAX_DPATH];
 #ifdef ACTION_REPLAY
@@ -548,7 +572,7 @@ struct uae_prefs {
 	int svga_no_linear;
 #endif
 
-	int win32_rtgvblankrate;
+//	int win32_rtgvblankrate;
 #ifdef USE_CURSES_GFX
 	int curses_reverse_video;
 #endif
@@ -566,7 +590,9 @@ struct uae_prefs {
 	int  amiga_use_grey;
 	int  amiga_use_dither;
 #endif
-
+#ifdef WITH_SLIRP
+	struct slirp_redir slirp_redirs[MAX_SLIRP_REDIRS];
+#endif
 #ifdef SAVESTATE
 	bool statecapture;
 	int statecapturerate, statecapturebuffersize;
@@ -585,6 +611,7 @@ struct uae_prefs {
 	int input_autofire_linecnt;
 	int input_mouse_speed;
 	int input_tablet;
+	bool tablet_library;
 	bool input_magic_mouse;
 	int input_magic_mouse_cursor;
 	int input_keyboard_type;
@@ -657,6 +684,7 @@ extern void cfgfile_parse_lines (struct uae_prefs *p, const TCHAR *, int);
 extern int cfgfile_parse_option (struct uae_prefs *p, TCHAR *option, TCHAR *value, int);
 extern int cfgfile_get_description (const TCHAR *filename, TCHAR *description, TCHAR *hostlink, TCHAR *hardwarelink, int *type);
 extern void cfgfile_show_usage (void);
+extern int cfgfile_searchconfig(const TCHAR *in, int index, TCHAR *out, int outsize);
 extern uae_u32 cfgfile_uaelib (int mode, uae_u32 name, uae_u32 dst, uae_u32 maxlen);
 extern uae_u32 cfgfile_uaelib_modify (uae_u32 mode, uae_u32 parms, uae_u32 size, uae_u32 out, uae_u32 outsize);
 extern uae_u32 cfgfile_modify (uae_u32 index, TCHAR *parms, uae_u32 size, TCHAR *out, uae_u32 outsize);
@@ -686,87 +714,8 @@ extern void machdep_free (void);
 #define __unix
 #endif
 
-#define MAX_COLOR_MODES 5
-
-/* #define NEED_TO_DEBUG_BADLY */
-
-#if !defined(USER_PROGRAMS_BEHAVE)
-#define USER_PROGRAMS_BEHAVE 0
-#endif
-
-/* Some memsets which know that they can safely overwrite some more memory
- * at both ends and use that knowledge to align the pointers. */
-
-#define QUADRUPLIFY(c) (((c) | ((c) << 8)) | (((c) | ((c) << 8)) << 16))
-
-/* When you call this routine, bear in mind that it rounds the bounds and
- * may need some padding for the array. */
-
-#define fuzzy_memset(p, c, o, l) fuzzy_memset_1 ((p), QUADRUPLIFY (c), (o) & ~3, ((l) + 4) >> 2)
-STATIC_INLINE void fuzzy_memset_1 (void *p, uae_u32 c, int offset, int len)
-{
-    uae_u32 *p2 = (uae_u32 *)((TCHAR *)p + offset);
-    int a = len & 7;
-    len >>= 3;
-    switch (a) {
-     case 7: p2--; goto l1;
-     case 6: p2-=2; goto l2;
-     case 5: p2-=3; goto l3;
-     case 4: p2-=4; goto l4;
-     case 3: p2-=5; goto l5;
-     case 2: p2-=6; goto l6;
-     case 1: p2-=7; goto l7;
-     case 0: if (!--len) return; break;
-    }
-
-    for (;;) {
-	p2[0] = c;
-	l1:
-	p2[1] = c;
-	l2:
-	p2[2] = c;
-	l3:
-	p2[3] = c;
-	l4:
-	p2[4] = c;
-	l5:
-	p2[5] = c;
-	l6:
-	p2[6] = c;
-	l7:
-	p2[7] = c;
-
-	if (!len)
-	    break;
-	len--;
-	p2 += 8;
-    }
-}
-
-/* This one knows it will never be asked to clear more than 32 bytes.  Make sure you call this with a
-   constant for the length.  */
-#define fuzzy_memset_le32(p, c, o, l) fuzzy_memset_le32_1 ((p), QUADRUPLIFY (c), (o) & ~3, ((l) + 7) >> 2)
-STATIC_INLINE void fuzzy_memset_le32_1 (void *p, uae_u32 c, int offset, int len)
-{
-    uae_u32 *p2 = (uae_u32 *)((TCHAR *)p + offset);
-
-    switch (len) {
-     case 9: p2[0] = c; p2[1] = c; p2[2] = c; p2[3] = c; p2[4] = c; p2[5] = c; p2[6] = c; p2[7] = c; p2[8] = c; break;
-     case 8: p2[0] = c; p2[1] = c; p2[2] = c; p2[3] = c; p2[4] = c; p2[5] = c; p2[6] = c; p2[7] = c; break;
-     case 7: p2[0] = c; p2[1] = c; p2[2] = c; p2[3] = c; p2[4] = c; p2[5] = c; p2[6] = c; break;
-     case 6: p2[0] = c; p2[1] = c; p2[2] = c; p2[3] = c; p2[4] = c; p2[5] = c; break;
-     case 5: p2[0] = c; p2[1] = c; p2[2] = c; p2[3] = c; p2[4] = c; break;
-     case 4: p2[0] = c; p2[1] = c; p2[2] = c; p2[3] = c; break;
-     case 3: p2[0] = c; p2[1] = c; p2[2] = c; break;
-     case 2: p2[0] = c; p2[1] = c; break;
-     case 1: p2[0] = c; break;
-     case 0: break;
-     default: printf("Hit the programmer.\n"); break;
-    }
-}
-
 #if defined TARGET_AMIGAOS && defined(__GNUC__)
 #include "od-amiga/amiga-kludges.h"
 #endif
 
-#endif // SRC_INCLUDE_OPTIONS_H_INCLUDED
+#endif // OPTIONS_H

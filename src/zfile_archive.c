@@ -25,6 +25,10 @@
 
 #include <zlib.h>
 
+#if defined(__native_client__)
+#include <sys/nacl_syscalls.h>
+#endif
+
 #define unpack_log write_log
 #undef unpack_log
 #define unpack_log(...) { }
@@ -48,7 +52,7 @@ static time_t fromdostime (uae_u32 dd)
 	struct tm* tm_local;
 	tm_local = localtime(&time_now);
 	t -= tm_local->tm_gmtoff;
-#else
+#elif defined(HAVE_TIMEZONE)
 	t -= (time_t)timezone;
 #endif
 	return t;
@@ -140,7 +144,7 @@ struct zfile *archive_access_select (struct znode *parent, struct zfile *zf, uns
 	zn = &zv->root;
 	while (zn) {
 		int isok = 1;
-		
+
 		diskimg = -1;
 		if (zn->type != ZNODE_FILE)
 			isok = 0;
@@ -303,7 +307,7 @@ struct zvolume *archive_directory_tar (struct zfile *z)
 			break;
 		if (block[0] == 0)
 			break;
-			
+
 		if (!memcmp (block + 257, "ustar  ", 8))
 			ustar = 1;
 		name[0] = 0;
@@ -328,7 +332,7 @@ struct zvolume *archive_directory_tar (struct zfile *z)
 #if defined(__FreeBSD__)
 			zai.tv.tv_sec += tm_local->tm_gmtoff;
 			if (tm_local->tm_isdst)
-#else
+#elif defined(HAVE_DAYLIGHT) && defined(HAVE_TIMEZONE)
 			zai.tv.tv_sec += timezone;
 			if (daylight)
 #endif
@@ -744,7 +748,7 @@ static struct zfile *archive_access_plain (struct znode *zn)
 	if (zn->offset) {
 		struct zfile *zf;
 		z = zfile_fopen_empty (zn->volume->archive, zn->fullname, zn->size);
-		zf = zfile_fopen4 (zfile_getname (zn->volume->archive), _T("rb"), zn->volume->archive->zfdmask & ~ZFD_ADF, zn->offset - 1);
+		zf = zfile_fopen_nmmi (zfile_getname (zn->volume->archive), _T("rb"), zn->volume->archive->zfdmask & ~ZFD_ADF, zn->offset - 1);
 		if (zf) {
 			zfile_fread (z->data, zn->size, 1, zf);
 			zfile_fclose (zf);
@@ -1283,7 +1287,7 @@ static struct zfile *archive_access_adf (struct znode *zn)
 				bsize = size;
 			zfile_fread (dst, bsize, 1, adf->z);
 			dst += bsize;
-			size -= bsize; 
+			size -= bsize;
 		}
 
 		xfree (sfsblocks);
@@ -1488,14 +1492,14 @@ int isfat (uae_u8 *p)
 #define SECS_PER_MIN    60
 #define SECS_PER_HOUR   (60 * 60)
 #define SECS_PER_DAY    (SECS_PER_HOUR * 24)
-#define UNIX_SECS_1980  315532800L   
+#define UNIX_SECS_1980  315532800L
 #if BITS_PER_LONG == 64
 #define UNIX_SECS_2108  4354819200L
 #endif
 /* days between 1.1.70 and 1.1.80 (2 leap days) */
-#define DAYS_DELTA      (365 * 10 + 2)         
+#define DAYS_DELTA      (365 * 10 + 2)
 /* 120 (2100 - 1980) isn't leap year */
-#define YEAR_2100       120 
+#define YEAR_2100       120
 #define IS_LEAP_YEAR(y) (!((y) & 3) && (y) != YEAR_2100)
 
 /* Linear day numbers of the respective 1sts in non-leap years. */
@@ -1514,7 +1518,7 @@ static time_t fat_time_fat2unix (uae_u16 time, uae_u16 date, int fat12)
 		month = (date >> 7) & 0x0f;
 		day = (date >> 11);
 	} else {
-		year  = date >> 9;  
+		year  = date >> 9;
 		month = max(1, (date >> 5) & 0xf);
 		day   = max(1, date & 0x1f) - 1;
 	}

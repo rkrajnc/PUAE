@@ -1,7 +1,3 @@
-#pragma once
-#ifndef SRC_INCLUDE_AUTOCONF_H_INCLUDED
-#define SRC_INCLUDE_AUTOCONF_H_INCLUDED 1
-
  /*
   * UAE - The Un*x Amiga Emulator
   *
@@ -9,6 +5,10 @@
   *
   * (c) 1996 Ed Hanway
   */
+
+#pragma once
+#ifndef AUTOCONF_H
+#define AUTOCONF_H
 
 #define RTAREA_DEFAULT 0xf00000
 #define RTAREA_BACKUP  0xef0000
@@ -32,7 +32,6 @@ struct uaedev_config_data;
 #endif // HAS_UAEDEV_CONFIG_DATA
 
 struct uaedev_mount_info;
-
 
 /* external prototypes */
 uae_u32 addr (int);
@@ -73,7 +72,7 @@ uaecptr need_uae_boot_rom (void);
 
 struct mountedinfo
 {
-	uae_u64 size;
+	uae_s64 size;
 	bool ismounted;
 	bool ismedia;
 	int nrcyls;
@@ -92,7 +91,7 @@ int filesys_eject (int nr);
 int filesys_media_change (const TCHAR *rootdir, int inserted, struct uaedev_config_data *uci);
 
 char *filesys_createvolname (const char *volname, const char *rootdir, const char *def);
-int target_get_volume_name(struct uaedev_mount_info *mtinf, const char *volumepath, char *volumename, int size, int inserted, int fullcheck);
+int target_get_volume_name(struct uaedev_mount_info *mtinf, const char *volumepath, char *volumename, int size, bool inserted, bool fullcheck);
 
 int sprintf_filesys_unit (char *buffer, int num);
 
@@ -114,5 +113,5 @@ void expansion_init (void);
 void expansion_cleanup (void);
 void expansion_clear (void);
 
-#endif // SRC_INCLUDE_AUTOCONF_H_INCLUDED
+#endif // AUTOCONF_H
 

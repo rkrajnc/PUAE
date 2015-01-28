@@ -1,15 +1,15 @@
-#pragma once
-#ifndef SRC_INCLUDE_XWIN_H_INCLUDED
-#define SRC_INCLUDE_XWIN_H_INCLUDED 1
+/*
+ * UAE - The Un*x Amiga Emulator
+ *
+ * Interface to the graphics system (X, SVGAlib)
+ *
+ * Copyright 1995-1997 Bernd Schmidt
+ * Copyright 2005 Richard Drummond
+ */
 
- /*
-  * UAE - The Un*x Amiga Emulator
-  *
-  * Interface to the graphics system (X, SVGAlib)
-  *
-  * Copyright 1995-1997 Bernd Schmidt
-  * Copyright 2005 Richard Drummond
-  */
+#pragma once
+#ifndef XWIN_H
+#define XWIN_H
 
 #define MAX_UAE_WIDTH 8192
 #define MAX_UAE_HEIGHT 8192
@@ -154,6 +154,7 @@ STATIC_INLINE void unlockscr (void)
 
 int  graphics_setup        (void);
 void graphics_leave        (void);
+void graphics_reset        (void);
 int  graphics_init         (void);
 int  graphics_open         (void);
 void graphics_close        (void);
@@ -168,4 +169,4 @@ void toggle_mousegrab      (void);
 extern struct bstring *video_mode_menu;
 void vidmode_menu_selected(int);
 
-#endif // SRC_INCLUDE_XWIN_H_INCLUDED
+#endif // XWIN_H

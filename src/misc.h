@@ -1,6 +1,6 @@
 #pragma once
-#ifndef SRC_MISC_H_INCLUDED
-#define SRC_MISC_H_INCLUDED 1
+#ifndef MISC_H
+#define MISC_H
 
 /*
  * PUAE - The Un*x Amiga Emulator
@@ -10,7 +10,7 @@
  * Copyright 2010-2013 Mustafa TUFAN
  */
 
-void getgfxoffset (int *dxp, int *dyp, int *mxp, int *myp);
+void getgfxoffset (float *dxp, float *dyp, float *mxp, float *myp);
 int isfullscreen (void);
 void fetch_configurationpath (TCHAR *out, int size);
 TCHAR* buf_out (TCHAR *buffer, int *bufsize, const TCHAR *format, ...);
@@ -44,4 +44,5 @@ int scan_roms (int show);
 void enumeratedisplays (void);
 void sortdisplays (void);
 
-#endif /* SRC_MISC_H_INCLUDED */
+#endif // MISC_H
+

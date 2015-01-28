@@ -54,7 +54,6 @@
 void get_custom_mouse_limits (int *pw, int *ph, int *pdx, int *pdy, int dbl);
 void init_aspect_maps (void);
 void finish_drawing_frame (void);
-void check_picasso (void);
 void reset_decision_table (void);
 
 
@@ -92,8 +91,8 @@ static int linedbl, linedbld;
 
 int interlace_seen = 0;
 #define AUTO_LORES_FRAMES 10
-static int can_use_lores = 0, frame_res, frame_res_lace, last_max_ypos;
-static int resolution_count[RES_MAX + 1];
+static int can_use_lores = 0, frame_res, frame_res_lace;
+static int resolution_count[RES_MAX + 1], lines_count;
 static bool center_reset;
 
 /* Lookup tables for dual playfields.  The dblpf_*1 versions are for the case
@@ -212,7 +211,6 @@ static int hblank_left_start, hblank_right_stop;
 static int linetoscr_x_adjust_bytes;
 static int thisframe_y_adjust;
 static int thisframe_y_adjust_real, max_ypos_thisframe, min_ypos_for_screen;
-static int extra_y_adjust;
 int thisframe_first_drawn_line, thisframe_last_drawn_line;
 
 /* A frame counter that forces a redraw after at least one skipped frame in
@@ -363,6 +361,7 @@ extern int plffirstline_total, plflastline_total;
 extern int first_planes_vpos, last_planes_vpos;
 extern int diwfirstword_total, diwlastword_total;
 extern int ddffirstword_total, ddflastword_total;
+extern bool vertical_changed, horizontal_changed;
 extern int firstword_bplcon1;
 extern int lof_store;
 
@@ -391,6 +390,7 @@ static void reset_custom_limits (void)
 {
 	gclow = gcloh = gclox = gcloy = 0;
 	gclorealh = -1;
+	center_reset = true;
 }
 
 static void set_blanking_limits (void)
@@ -692,12 +692,9 @@ static int playfield_start, playfield_end;
 static int real_playfield_start, real_playfield_end;
 static int linetoscr_diw_start, linetoscr_diw_end;
 static int native_ddf_left, native_ddf_right;
-#if 0
-static bool can_have_bordersprite;
-#endif
 
 static int pixels_offset;
-static int src_pixel, ham_src_pixel;
+static int src_pixel;
 /* How many pixels in window coordinates which are to the left of the left border.  */
 static int unpainted;
 
@@ -779,20 +776,26 @@ static void pfield_init_linetoscr (bool border)
 	// before first bitplane pixel appears.
 	// This means "bordersprite" condition is possible under OCS/ECS too. Argh!
 	if (dip_for_drawing->nr_sprites) {
-		/* bordersprite off or not supported: sprites are visible until diw_end */
-		if (playfield_end < linetoscr_diw_end && hblank_right_stop > playfield_end) {
-			playfield_end = linetoscr_diw_end;
-		}
-		int left = coord_hw_to_window_x (dp_for_drawing->plfleft * 2);
-		if (left < visible_left_border)
-			left = visible_left_border;
-		if (left < playfield_start && left >= linetoscr_diw_start) {
-			playfield_start = left;
+		if (!colors_for_drawing.borderblank) {
+			/* bordersprite off or not supported: sprites are visible until diw_end */
+			if (playfield_end < linetoscr_diw_end && hblank_right_stop > playfield_end) {
+				playfield_end = linetoscr_diw_end;
+			}
+			int left = coord_hw_to_window_x (dp_for_drawing->plfleft * 2);
+			if (left < visible_left_border)
+				left = visible_left_border;
+			if (left < playfield_start && left >= linetoscr_diw_start) {
+				playfield_start = left;
+			}
+		} else {
+			if (playfield_end < linetoscr_diw_end && hblank_right_stop > playfield_end) {
+				playfield_end = linetoscr_diw_end;
+			}
 		}
 	}
 
 #ifdef AGA
-	if (dp_for_drawing->bordersprite_seen && dip_for_drawing->nr_sprites) {
+	if (dp_for_drawing->bordersprite_seen && !colors_for_drawing.borderblank && dip_for_drawing->nr_sprites) {
 		int min = visible_right_border, max = visible_left_border, i;
 		for (i = 0; i < dip_for_drawing->nr_sprites; i++) {
 			int x;
@@ -819,17 +822,25 @@ static void pfield_init_linetoscr (bool border)
 #endif
 
 	unpainted = visible_left_border < playfield_start ? 0 : visible_left_border - playfield_start;
-	ham_src_pixel = MAX_PIXELS_PER_LINE + res_shift_from_window (playfield_start - native_ddf_left);
 	unpainted = res_shift_from_window (unpainted);
 
-	if (sprite_first_x < sprite_last_x) {
-		if (sprite_first_x < 0)
-			sprite_first_x = 0;
-		if (sprite_last_x >= MAX_PIXELS_PER_LINE - 1)
-			sprite_last_x = MAX_PIXELS_PER_LINE - 2;
-		if (sprite_first_x < sprite_last_x)
-			memset (spritepixels + sprite_first_x, 0, sizeof (struct spritepixelsbuf) * (sprite_last_x - sprite_first_x + 1));
+	int first_x = sprite_first_x;
+	int last_x = sprite_last_x;
+	if (first_x < last_x) {
+		if (dp_for_drawing->bordersprite_seen && !colors_for_drawing.borderblank) {
+			if (first_x > visible_left_border)
+				first_x = visible_left_border;
+			if (last_x < visible_right_border)
+				last_x = visible_right_border;
+		}
+		if (first_x < 0)
+			first_x = 0;
+		if (last_x > MAX_PIXELS_PER_LINE - 2)
+			last_x = MAX_PIXELS_PER_LINE - 2;
+		if (first_x < last_x)
+			memset (spritepixels + first_x, 0, sizeof (struct spritepixelsbuf) * (last_x - first_x + 1));
 	}
+
 	sprite_last_x = 0;
 	sprite_first_x = MAX_PIXELS_PER_LINE - 1;
 
@@ -944,7 +955,7 @@ static void pfield_do_fill_line (int start, int stop, bool blank)
 	}
 }
 
-STATIC_INLINE void fill_line2 (int startpos, int len)
+static void fill_line2 (int startpos, int len)
 {
 	int shift;
 	int nints, nrem;
@@ -992,16 +1003,36 @@ STATIC_INLINE void fill_line2 (int startpos, int len)
 	}
 }
 
-static void fill_line (void)
+static void fill_line_border (void)
 {
-	int hs = coord_hw_to_window_x (hsyncstartpos * 2);
-	if (hs >= gfxvidinfo.inwidth || hposblank) {
+	int lastpos = visible_left_border;
+	int endpos = visible_left_border + gfxvidinfo.inwidth;
+
+	// full hblank
+	if (hposblank) {
 		hposblank = 3;
-		fill_line2 (visible_left_border, gfxvidinfo.inwidth);
-	} else {
-		fill_line2 (visible_left_border, hs);
-		hposblank = 2;
-		fill_line2 (visible_left_border + hs, gfxvidinfo.inwidth);
+		fill_line2(lastpos, gfxvidinfo.inwidth);
+		return;
+	}
+	// hblank not visible
+	if (hblank_left_start <= lastpos && hblank_right_stop >= endpos) {
+		fill_line2(lastpos, gfxvidinfo.inwidth);
+		return;
+	}
+
+	// left, right or both hblanks visible
+	if (lastpos < hblank_left_start) {
+		int t = hblank_left_start < endpos ? hblank_left_start : endpos;
+		pfield_do_fill_line(lastpos, t, true);
+		lastpos = t;
+	}
+	if (lastpos < hblank_right_stop) {
+		int t = hblank_right_stop < endpos ? hblank_right_stop : endpos;
+		pfield_do_fill_line(lastpos, t, false);
+		lastpos = t;
+	}
+	if (lastpos < endpos) {
+		pfield_do_fill_line(lastpos, endpos, true);
 	}
 }
 
@@ -1027,7 +1058,7 @@ STATIC_INLINE uae_u8 render_sprites (int pos, int dualpf, uae_u8 apixel, int aga
 		pairs 01 and 23 cleared, and pairs 45 and 67 set, so OFFS will
 		have a value of 4.
 		2 * OFFS is the bit number in V of the sprite pair, and it also
-		happens to be the color offset for that pair. 
+		happens to be the color offset for that pair.
 		*/
 		int offs;
 		if (v1 == 0)
@@ -1095,7 +1126,7 @@ STATIC_INLINE uae_u32 shsprite (int dpix, uae_u32 spix_val, uae_u32 v, int spr)
 	sprcol = render_sprites (dpix, 0, spix_val, 0);
 	if (!sprcol)
 		return v;
-	/* good enough for now.. */ 
+	/* good enough for now.. */
 	scol = colors_for_drawing.color_regs_ecs[sprcol] & 0xccc;
 	scol |= scol >> 2;
 	return xcolors[scol];
@@ -1517,13 +1548,54 @@ static void pfield_do_linetoscr (int start, int stop, bool blank)
 
 }
 
-// left or right border sprite
-static void pfield_do_linetoscr_border (int start, int stop, bool blank)
+// left or right AGA border sprite
+static void pfield_do_linetoscr_bordersprite_aga (int start, int stop, bool blank)
 {
-	bool old = issprites;
-	issprites = colors_for_drawing.bordersprite != 0;
-	pfield_do_linetoscr (start, stop, blank);
-	issprites = old;
+	if (blank) {
+		pfield_do_fill_line (start, stop, blank);
+		return;
+	}
+
+	if (res_shift == 0) {
+		switch (gfxvidinfo.pixbytes) {
+		case 2: src_pixel = linetoscr_16_aga_spronly (LTPARMS); break;
+		case 4: src_pixel = linetoscr_32_aga_spronly (LTPARMS); break;
+		}
+	} else if (res_shift == 2) {
+		switch (gfxvidinfo.pixbytes) {
+		case 2: src_pixel = linetoscr_16_stretch2_aga_spronly (LTPARMS); break;
+		case 4: src_pixel = linetoscr_32_stretch2_aga_spronly (LTPARMS); break;
+		}
+	} else if (res_shift == 1) {
+		switch (gfxvidinfo.pixbytes) {
+		case 2: src_pixel = linetoscr_16_stretch1_aga_spronly (LTPARMS); break;
+		case 4: src_pixel = linetoscr_32_stretch1_aga_spronly (LTPARMS); break;
+		}
+	} else if (res_shift == -1) {
+		if (currprefs.gfx_lores_mode) {
+			switch (gfxvidinfo.pixbytes) {
+			case 2: src_pixel = linetoscr_16_shrink1f_aga_spronly (LTPARMS); break;
+			case 4: src_pixel = linetoscr_32_shrink1f_aga_spronly (LTPARMS); break;
+			}
+		} else {
+			switch (gfxvidinfo.pixbytes) {
+			case 2: src_pixel = linetoscr_16_shrink1_aga_spronly (LTPARMS); break;
+			case 4: src_pixel = linetoscr_32_shrink1_aga_spronly (LTPARMS); break;
+			}
+		}
+	} else if (res_shift == -2) {
+		if (currprefs.gfx_lores_mode) {
+			switch (gfxvidinfo.pixbytes) {
+			case 2: src_pixel = linetoscr_16_shrink2f_aga_spronly (LTPARMS); break;
+			case 4: src_pixel = linetoscr_32_shrink2f_aga_spronly (LTPARMS); break;
+			}
+		} else {
+			switch (gfxvidinfo.pixbytes) {
+			case 2: src_pixel = linetoscr_16_shrink2_aga_spronly (LTPARMS); break;
+			case 4: src_pixel = linetoscr_32_shrink2_aga_spronly (LTPARMS); break;
+			}
+		}
+	}
 }
 
 static void dummy_worker (int start, int stop, bool blank)
@@ -1542,7 +1614,7 @@ static void init_ham_decoding (void)
 {
 	int unpainted_amiga = unpainted;
 
-	ham_decode_pixel = ham_src_pixel;
+	ham_decode_pixel = src_pixel;
 	ham_lastcolor = color_reg_get (&colors_for_drawing, 0);
 
 	if (!bplham) {
@@ -1654,6 +1726,17 @@ static void decode_ham (int pix, int stoppos, bool blank)
 			ham_linebuf[ham_decode_pixel++] = ham_lastcolor;
 		}
 	}
+}
+
+static void erase_ham_right_border(int pix, int stoppos, bool blank)
+{
+	if (stoppos < playfield_end)
+		return;
+	// erase right border in HAM modes or old HAM data may be visible
+	// if DDFSTOP < DIWSTOP (Uridium II title screen)
+	int todraw_amiga = res_shift_from_window (stoppos - pix);
+	while (todraw_amiga-- > 0)
+		ham_linebuf[ham_decode_pixel++] = 0;
 }
 
 static void gen_pfield_tables (void)
@@ -1918,7 +2001,7 @@ void init_row_map (void)
 	}
 	if (!row_map)
 		row_map = xmalloc (uae_u8*, MAX_UAE_HEIGHT + 1);
-	
+
 	if (oldbufmem && oldbufmem == gfxvidinfo.bufmem &&
 		oldheight == gfxvidinfo.height_allocated &&
 		oldpitch == gfxvidinfo.rowbytes)
@@ -1964,21 +2047,16 @@ void init_aspect_maps (void)
 	for (i = 0; i < maxl; i++) {
 		int v = i - min_ypos_for_screen;
 		if (v >= h && max_drawn_amiga_line < 0)
-			max_drawn_amiga_line = i - min_ypos_for_screen;
+			max_drawn_amiga_line = v;
 		if (i < min_ypos_for_screen || v >= h)
 			v = -1;
 		amiga2aspect_line_map[i] = v;
 	}
 	if (max_drawn_amiga_line < 0)
 		max_drawn_amiga_line = maxl - min_ypos_for_screen;
+	if (max_drawn_amiga_line > gfxvidinfo.inheight)
+		max_drawn_amiga_line = gfxvidinfo.inheight;
 	max_drawn_amiga_line >>= linedbl;
-
-	if (currprefs.gfx_ycenter && !currprefs.gfx_filter_autoscale) {
-		/* @@@ verify maxvpos vs. MAXVPOS */
-		extra_y_adjust = (h - (maxvpos_display << linedbl)) >> 1;
-		if (extra_y_adjust < 0)
-			extra_y_adjust = 0;
-	}
 
 	for (i = h; i--; )
 		native2amiga_line_map[i] = -1;
@@ -2039,7 +2117,7 @@ STATIC_INLINE void do_flush_line (int lineno)
  * systems.
  */
 
-STATIC_INLINE void do_flush_screen (int start, int stop)
+static void do_flush_screen (int start, int stop)
 {
 	/* TODO: this flush operation is executed outside locked state!
 	Should be corrected.
@@ -2061,16 +2139,13 @@ STATIC_INLINE void do_flush_screen (int start, int stop)
  * form. */
 static void pfield_expand_dp_bplcon (void)
 {
-// REMOVEME:
-#if 0
-	static int b2;
-#endif
+// REMOVEME: static int b2;
 
 	bplres = dp_for_drawing->bplres;
 	bplplanecnt = dp_for_drawing->nr_planes;
 	bplham = dp_for_drawing->ham_seen;
 	bplehb = dp_for_drawing->ehb_seen;
-	if ((currprefs.chipset_mask & CSMASK_AGA) && (dp_for_drawing->bplcon2 & 0x0200))
+	if ((currprefs.chipset_mask & CSMASK_ECS_DENISE) && (dp_for_drawing->bplcon2 & 0x0200))
 		bplehb = 0;
 	issprites = dip_for_drawing->nr_sprites > 0;
 #ifdef ECS_DENISE
@@ -2239,14 +2314,23 @@ static void do_color_changes (line_draw_func worker_border, line_draw_func worke
 		if (lastpos >= endpos)
 			break;
 	}
-/*	if (vp < visible_top_start || vp >= visible_bottom_stop) {
+#if 1
+	if (vp < visible_top_start || vp >= visible_bottom_stop) {
 		// outside of visible area
 		// Just overwrite with black. Above code needs to run because of custom registers,
 		// not worth the trouble for separate code path just for max 10 lines or so
 		(*worker_border) (visible_left_border, visible_left_border + gfxvidinfo.inwidth, true);
-	}*/
-
+	}
+#endif
 }
+
+STATIC_INLINE bool is_color_changes(struct draw_info *di)
+{
+	int regno = curr_color_changes[di->first_color_change].regno;
+	int changes = di->nr_color_changes;
+	return changes > 1 || (changes == 1 && regno != 0xffff && regno != -1);
+}
+
 enum double_how {
 	dh_buf,
 	dh_line,
@@ -2258,12 +2342,16 @@ static void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 // REMOVEME: static int warned = 0;
 	int border = 0;
 	int do_double = 0;
+	bool have_color_changes;
 	enum double_how dh;
 
 	dp_for_drawing = line_decisions + lineno;
 	dip_for_drawing = curr_drawinfo + lineno;
 
-	resolution_count[dp_for_drawing->bplres]++;
+	if (dp_for_drawing->plfleft >= 0) {
+		lines_count++;
+		resolution_count[dp_for_drawing->bplres]++;
+	}
 
 	switch (linestate[lineno])
 	{
@@ -2309,10 +2397,12 @@ static void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 		break;
 	}
 
+	have_color_changes = is_color_changes(dip_for_drawing);
+
 	dh = dh_line;
 	xlinebuffer = gfxvidinfo.linemem;
 	if (xlinebuffer == 0 && do_double
-		&& (border == 0 || dip_for_drawing->nr_color_changes > 0))
+		&& (border == 0 || have_color_changes))
 		xlinebuffer = gfxvidinfo.emergmem, dh = dh_emerg;
 	if (xlinebuffer == 0)
 		xlinebuffer = row_map[gfx_ypos], dh = dh_buf;
@@ -2329,26 +2419,23 @@ static void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 		/* The problem is that we must call decode_ham() BEFORE we do the
 		   sprites. */
 		if (dp_for_drawing->ham_seen) {
+			int ohposblank = hposblank;
 			init_ham_decoding ();
-			if (dip_for_drawing->nr_color_changes == 0) {
-				/* The easy case: need to do HAM decoding only once for the
-				 * full line. */
-				decode_ham (visible_left_border, visible_right_border, false);
-			} else /* Argh. */ {
-				int ohposblank = hposblank;
-				do_color_changes (dummy_worker, decode_ham, lineno);
-				hposblank = ohposblank;
-				// reset colors to state before above do_color_changes()
-				adjust_drawing_colors (dp_for_drawing->ctable, (dp_for_drawing->ham_seen || bplehb) ? -1 : 0);
+			do_color_changes (dummy_worker, decode_ham, lineno);
+			if (have_color_changes) {
+				// do_color_changes() did color changes, reset colors back to original state
+				adjust_drawing_colors (dp_for_drawing->ctable, -1);
 				pfield_expand_dp_bplcon ();
 			}
+			hposblank = ohposblank;
+			ham_decode_pixel = src_pixel;
 			bplham = dp_for_drawing->ham_at_start;
 		}
 
 		if (dip_for_drawing->nr_sprites) {
 			int i;
 #ifdef AGA
-			if (colors_for_drawing.bordersprite)
+			if (colors_for_drawing.bordersprite && dp_for_drawing->bordersprite_seen && !colors_for_drawing.borderblank)
 				clear_bitplane_border_aga ();
 #endif
 
@@ -2362,7 +2449,12 @@ static void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 			}
 		}
 
-		do_color_changes (pfield_do_fill_line, pfield_do_linetoscr, lineno);
+#ifdef AGA
+		if (dip_for_drawing->nr_sprites && colors_for_drawing.bordersprite && !colors_for_drawing.borderblank && dp_for_drawing->bordersprite_seen)
+			do_color_changes (pfield_do_linetoscr_bordersprite_aga, pfield_do_linetoscr, lineno);
+		else
+#endif
+			do_color_changes (pfield_do_fill_line, pfield_do_linetoscr, lineno);
 
 		if (dh == dh_emerg)
 			memcpy (row_map[gfx_ypos], xlinebuffer + linetoscr_x_adjust_bytes, gfxvidinfo.pixbytes * gfxvidinfo.inwidth);
@@ -2379,14 +2471,14 @@ static void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 		if (dip_for_drawing->nr_sprites)
 			pfield_erase_hborder_sprites ();
 
-	} else if (border > 0) {
-		// border > 0: top or bottom border
+	} else if (border > 0) { // border > 0: top or bottom border
+
 		bool dosprites = false;
 
 		adjust_drawing_colors (dp_for_drawing->ctable, 0);
 
 #ifdef AGA /* this makes things complex.. */
-		if (dp_for_drawing->bordersprite_seen && dip_for_drawing->nr_sprites) {
+		if (dp_for_drawing->bordersprite_seen && !colors_for_drawing.borderblank && dip_for_drawing->nr_sprites) {
 			dosprites = true;
 			pfield_expand_dp_bplcon ();
 			pfield_init_linetoscr (true);
@@ -2394,14 +2486,23 @@ static void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 		}
 #endif
 
-		if (!dosprites && dip_for_drawing->nr_color_changes == 0) {
-			fill_line ();
-			do_flush_line (gfx_ypos);
+		if (!dosprites && !have_color_changes) {
+			if (dp_for_drawing->plfleft < -1) {
+				// blanked border line
+				int tmp = hposblank;
+				hposblank = 1;
+				fill_line_border ();
+				hposblank = tmp;
+			} else {
+				// normal border line
+				fill_line_border ();
+			}
 
+			do_flush_line (gfx_ypos);
 			if (do_double) {
 				if (dh == dh_buf) {
 					xlinebuffer = row_map[follow_ypos] - linetoscr_x_adjust_bytes;
-					fill_line ();
+					fill_line_border ();
 				}
 				/* If dh == dh_line, do_flush_line will re-use the rendered line
 				 * from linemem.  */
@@ -2414,20 +2515,9 @@ static void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 		if (dosprites) {
 
 			int i;
-
 			for (i = 0; i < dip_for_drawing->nr_sprites; i++)
 				draw_sprites_aga (curr_sprite_entries + dip_for_drawing->first_sprite_entry + i, 1);
-			uae_u16 oxor = bplxor;
-			if (dp_for_drawing->ham_seen) {
-				int todraw_amiga = res_shift_from_window (visible_right_border - visible_left_border);
-				init_ham_decoding ();
-				memset (ham_linebuf + ham_decode_pixel, 0, todraw_amiga * sizeof (uae_u32));
-			}
-			if (dip_for_drawing->nr_color_changes) {
-				bplxor = 0;
-				do_color_changes (pfield_do_fill_line, pfield_do_linetoscr_border, lineno);
-				bplxor = oxor;
-			}
+			do_color_changes (pfield_do_linetoscr_bordersprite_aga, pfield_do_linetoscr_bordersprite_aga, lineno);
 #else
 		if (0) {
 #endif
@@ -2454,9 +2544,10 @@ static void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 
 	} else {
 
+		// top or bottom blanking region
 		int tmp = hposblank;
-		hposblank = colors_for_drawing.borderblank;
-		fill_line ();
+		hposblank = 1;
+		fill_line_border ();
 		do_flush_line (gfx_ypos);
 		hposblank = tmp;
 
@@ -2467,10 +2558,9 @@ static void center_image (void)
 {
 	int prev_x_adjust = visible_left_border;
 	int prev_y_adjust = thisframe_y_adjust;
-	int tmp;
 
 	int w = gfxvidinfo.inwidth;
-	if (currprefs.gfx_xcenter && !currprefs.gfx_filter_autoscale && max_diwstop > 0) {
+	if (currprefs.gfx_xcenter && !currprefs.gf[0].gfx_filter_autoscale && max_diwstop > 0) {
 
 		if (max_diwstop - min_diwstart < w && currprefs.gfx_xcenter == 2)
 			/* Try to center. */
@@ -2478,13 +2568,15 @@ static void center_image (void)
 		else
 			visible_left_border = max_diwstop - w - (max_diwstop - min_diwstart - w) / 2;
 		visible_left_border &= ~((xshift (1, lores_shift)) - 1);
-
-		/* Would the old value be good enough? If so, leave it as it is if we want to
-		* be clever. */
-		if (currprefs.gfx_xcenter == 2) {
-			if (center_reset || (visible_left_border < prev_x_adjust && prev_x_adjust < min_diwstart && min_diwstart - visible_left_border <= 32))
-				visible_left_border = prev_x_adjust;
+#if 1
+		if (!center_reset && !vertical_changed) {
+			/* Would the old value be good enough? If so, leave it as it is if we want to be clever. */
+			if (currprefs.gfx_xcenter == 2) {
+				if (visible_left_border < prev_x_adjust && prev_x_adjust < min_diwstart && min_diwstart - visible_left_border <= 32)
+					visible_left_border = prev_x_adjust;
+			}
 		}
+#endif
 	} else if (gfxvidinfo.extrawidth) {
 		visible_left_border = max_diwlastword - w;
 		if (gfxvidinfo.extrawidth > 0)
@@ -2512,59 +2604,54 @@ static void center_image (void)
 		visible_right_border = max_diwlastword;
 
 	thisframe_y_adjust = minfirstline;
-	if (currprefs.gfx_ycenter && thisframe_first_drawn_line >= 0 && !currprefs.gfx_filter_autoscale) {
+	if (currprefs.gfx_ycenter && thisframe_first_drawn_line >= 0 && !currprefs.gf[0].gfx_filter_autoscale) {
 
 		if (thisframe_last_drawn_line - thisframe_first_drawn_line < max_drawn_amiga_line && currprefs.gfx_ycenter == 2)
 			thisframe_y_adjust = (thisframe_last_drawn_line - thisframe_first_drawn_line - max_drawn_amiga_line) / 2 + thisframe_first_drawn_line;
 		else
-			thisframe_y_adjust = thisframe_first_drawn_line + ((thisframe_last_drawn_line - thisframe_first_drawn_line) - max_drawn_amiga_line) / 2;
-
-		/* Would the old value be good enough? If so, leave it as it is if we want to
-		 * be clever. */
-		if (currprefs.gfx_ycenter == 2 && thisframe_y_adjust != prev_y_adjust) {
-			if (center_reset || (prev_y_adjust <= thisframe_first_drawn_line && prev_y_adjust + max_drawn_amiga_line > thisframe_last_drawn_line))
-				thisframe_y_adjust = prev_y_adjust;
+			thisframe_y_adjust = thisframe_first_drawn_line;
+#if 1
+		/* Would the old value be good enough? If so, leave it as it is if we want to be clever. */
+		if (!center_reset && !horizontal_changed) {
+			if (currprefs.gfx_ycenter == 2 && thisframe_y_adjust != prev_y_adjust) {
+				if (prev_y_adjust <= thisframe_first_drawn_line && prev_y_adjust + max_drawn_amiga_line > thisframe_last_drawn_line)
+					thisframe_y_adjust = prev_y_adjust;
+			}
 		}
+#endif
 	}
 
 	/* Make sure the value makes sense */
-	if (thisframe_y_adjust + max_drawn_amiga_line > maxvpos_display)
-		thisframe_y_adjust = maxvpos_display - max_drawn_amiga_line;
-	if (thisframe_y_adjust < minfirstline)
-		thisframe_y_adjust = minfirstline;
+	if (thisframe_y_adjust + max_drawn_amiga_line > maxvpos + maxvpos / 2)
+		thisframe_y_adjust = maxvpos + maxvpos / 2 - max_drawn_amiga_line;
+	if (thisframe_y_adjust < 0)
+		thisframe_y_adjust = 0;
 
 	thisframe_y_adjust_real = thisframe_y_adjust << linedbl;
-	tmp = (maxvpos_display - thisframe_y_adjust + 1) << linedbl;
-	if (tmp != max_ypos_thisframe) {
-		last_max_ypos = tmp;
-		if (last_max_ypos < 0)
-			last_max_ypos = 0;
-	}
-	max_ypos_thisframe = tmp;
+	max_ypos_thisframe = (maxvpos_display - minfirstline + 1) << linedbl;
 
-	/* @@@ interlace_seen used to be (bplcon0 & 4), but this is probably
-	 * better.  */
 	if (prev_x_adjust != visible_left_border || prev_y_adjust != thisframe_y_adjust)
-		frame_redraw_necessary |= (interlace_seen > 0 && linedbl) ? 2 : 1;
+		frame_redraw_necessary |= interlace_seen > 0 && linedbl ? 2 : 1;
 
 	max_diwstop = 0;
 	min_diwstart = MAX_STOP;
 
 	gfxvidinfo.xoffset = (DISPLAY_LEFT_SHIFT << RES_MAX) + (visible_left_border << (RES_MAX - currprefs.gfx_resolution));
 	gfxvidinfo.yoffset = thisframe_y_adjust << VRES_MAX;
+
 	center_reset = false;
+	horizontal_changed = false;
+	vertical_changed = false;
 }
 
 static int frame_res_cnt;
+static int autoswitch_old_resolution;
 static void init_drawing_frame (void)
 {
 	int i, maxline;
 	static int frame_res_old;
 
-	if (currprefs.gfx_autoresolution && !specialmonitoron) {
-		int frame_res_detected;
-		int frame_res_lace_detected = frame_res_lace;
-
+	if (lines_count > 0) {
 		int largest_count = 0;
 		int largest_count_res = 0;
 		int largest_res = 0;
@@ -2577,78 +2664,113 @@ static void init_drawing_frame (void)
 			}
 		}
 
-		if (currprefs.gfx_autoresolution == 1)
-			frame_res_detected = largest_res;
-		else if (largest_count * 100 / maxvpos >= currprefs.gfx_autoresolution)
-			frame_res_detected = largest_count_res;
-		else
-			frame_res_detected = largest_count_res - 1;
-		if (frame_res_detected < 0)
-			frame_res_detected = 0;
+		if (currprefs.gfx_autoresolution_vga && programmedmode && gfxvidinfo.gfx_resolution_reserved >= RES_HIRES && gfxvidinfo.gfx_vresolution_reserved >= VRES_DOUBLE) {
+			if (largest_res == RES_SUPERHIRES && (gfxvidinfo.gfx_resolution_reserved < RES_SUPERHIRES || gfxvidinfo.gfx_vresolution_reserved < 1)) {
+				// enable full doubling/superhires support if programmed mode. It may be "half-width" only and may fit in normal display window.
+				gfxvidinfo.gfx_resolution_reserved = RES_SUPERHIRES;
+				gfxvidinfo.gfx_vresolution_reserved = VRES_DOUBLE;
+				//graphics_reset(); display_change_requested
+			}
+			int newres = largest_res;
+			if (htotal < 190)
+				newres = largest_res + 1;
+			if (newres < RES_HIRES)
+				newres = RES_HIRES;
+			if (newres > RES_MAX)
+				newres = RES_MAX;
+			if (changed_prefs.gfx_resolution != newres) {
+				autoswitch_old_resolution = RES_HIRES;
+				write_log(_T("Programmed mode autores = %d -> %d (%d)\n"), changed_prefs.gfx_resolution, newres, largest_res);
+				changed_prefs.gfx_resolution = newres;
+			}
+		} else if (autoswitch_old_resolution == 1) {
+			changed_prefs.gfx_resolution = RES_HIRES;
+			autoswitch_old_resolution = 0;
+		}
 
-		if (frame_res_detected >= 0 && frame_res_lace_detected >= 0) {
-			if (frame_res_cnt > 0 && frame_res_old == frame_res_detected * 2 + frame_res_lace_detected) {
-				frame_res_cnt--;
-				if (frame_res_cnt == 0) {
-					int m = frame_res_detected * 2 + frame_res_lace_detected;
-					struct wh *dst = currprefs.gfx_apmode[0].gfx_fullscreen ? &changed_prefs.gfx_size_fs : &changed_prefs.gfx_size_win;
-					while (m < 3 * 2) {
-						struct wh *src = currprefs.gfx_apmode[0].gfx_fullscreen ? &currprefs.gfx_size_fs_xtra[m] : &currprefs.gfx_size_win_xtra[m];
-						if ((src->width > 0 && src->height > 0) || (currprefs.gfx_api || currprefs.gfx_filter > 0)) {
-							int nr = m >> 1;
-							int nl = (m & 1) == 0 ? 0 : 1;
-							int nr_o = nr;
-							int nl_o = nl;
+		if (currprefs.gfx_autoresolution) {
+			int frame_res_detected;
+			int frame_res_lace_detected = frame_res_lace;
 
-							if (currprefs.gfx_autoresolution_minh < 0) {
-								if (nr < nl)
-									nr = nl;
-							} else if (nr < currprefs.gfx_autoresolution_minh) {
-								nr = currprefs.gfx_autoresolution_minh;
-							}
-							if (currprefs.gfx_autoresolution_minv < 0) {
-								if (nl < nr)
-									nl = nr;
-							} else if (nl < currprefs.gfx_autoresolution_minv) {
-								nl = currprefs.gfx_autoresolution_minv;
-							}
+			if (currprefs.gfx_autoresolution == 1 || currprefs.gfx_autoresolution >= 100)
+				frame_res_detected = largest_res;
+			else if (largest_count * 100 / lines_count >= currprefs.gfx_autoresolution)
+				frame_res_detected = largest_count_res;
+			else
+				frame_res_detected = largest_count_res - 1;
+			if (frame_res_detected < 0)
+				frame_res_detected = 0;
 
-							if (nr > gfxvidinfo.gfx_resolution_reserved)
-								nr = gfxvidinfo.gfx_resolution_reserved;
-							if (nl > gfxvidinfo.gfx_vresolution_reserved)
-								nl = gfxvidinfo.gfx_vresolution_reserved;
+			if (frame_res_detected >= 0 && frame_res_lace_detected >= 0) {
+				if (frame_res_cnt > 0 && frame_res_old == frame_res_detected * 2 + frame_res_lace_detected) {
+					frame_res_cnt--;
+					if (frame_res_cnt == 0) {
+						int m = frame_res_detected * 2 + frame_res_lace_detected;
+						struct wh *dst = currprefs.gfx_apmode[0].gfx_fullscreen ? &changed_prefs.gfx_size_fs : &changed_prefs.gfx_size_win;
+						while (m < 3 * 2) {
+							struct wh *src = currprefs.gfx_apmode[0].gfx_fullscreen ? &currprefs.gfx_size_fs_xtra[m] : &currprefs.gfx_size_win_xtra[m];
+							if ((src->width > 0 && src->height > 0) || (currprefs.gfx_api || currprefs.gf[0].gfx_filter > 0)) {
+								int nr = m >> 1;
+								int nl = (m & 1) == 0 ? 0 : 1;
+								int nr_o = nr;
+								int nl_o = nl;
 
-							if (changed_prefs.gfx_resolution != nr || changed_prefs.gfx_vresolution != nl) {
-								changed_prefs.gfx_resolution = nr;
-								changed_prefs.gfx_vresolution = nl;
-								write_log (_T("RES -> %d (%d) LINE -> %d (%d) (%d - %d, %d - %d)\n"), nr, nr_o, nl, nl_o,
-									currprefs.gfx_autoresolution_minh, currprefs.gfx_autoresolution_minv,
-									gfxvidinfo.gfx_resolution_reserved, gfxvidinfo.gfx_vresolution_reserved);
-								set_config_changed ();
-								//activate_debugger ();
-							}
-							if (src->width > 0 && src->height > 0) {
-								if (memcmp (dst, src, sizeof *dst)) {
-									*dst = *src;
-									set_config_changed ();
+								if (currprefs.gfx_autoresolution >= 100 && nl == 0 && nr > 0) {
+									nl = 1;
 								}
+
+								if (currprefs.gfx_autoresolution_minh < 0) {
+									if (nr < nl)
+										nr = nl;
+								} else if (nr < currprefs.gfx_autoresolution_minh) {
+									nr = currprefs.gfx_autoresolution_minh;
+								}
+								if (currprefs.gfx_autoresolution_minv < 0) {
+									if (nl < nr)
+										nl = nr;
+								} else if (nl < currprefs.gfx_autoresolution_minv) {
+									nl = currprefs.gfx_autoresolution_minv;
+								}
+
+								if (nr > gfxvidinfo.gfx_resolution_reserved)
+									nr = gfxvidinfo.gfx_resolution_reserved;
+								if (nl > gfxvidinfo.gfx_vresolution_reserved)
+									nl = gfxvidinfo.gfx_vresolution_reserved;
+
+								if (changed_prefs.gfx_resolution != nr || changed_prefs.gfx_vresolution != nl) {
+									changed_prefs.gfx_resolution = nr;
+									changed_prefs.gfx_vresolution = nl;
+
+									write_log (_T("RES -> %d (%d) LINE -> %d (%d) (%d - %d, %d - %d)\n"), nr, nr_o, nl, nl_o,
+										currprefs.gfx_autoresolution_minh, currprefs.gfx_autoresolution_minv,
+										gfxvidinfo.gfx_resolution_reserved, gfxvidinfo.gfx_vresolution_reserved);
+									set_config_changed ();
+									//activate_debugger ();
+								}
+								if (src->width > 0 && src->height > 0) {
+									if (memcmp (dst, src, sizeof *dst)) {
+										*dst = *src;
+										set_config_changed ();
+									}
+								}
+								break;
 							}
-							break;
+							m++;
 						}
-						m++;
+						frame_res_cnt = currprefs.gfx_autoresolution_delay;
 					}
+				} else {
+					frame_res_old = frame_res_detected * 2 + frame_res_lace_detected;
 					frame_res_cnt = currprefs.gfx_autoresolution_delay;
+					if (frame_res_cnt <= 0)
+						frame_res_cnt = 1;
 				}
-			} else {
-				frame_res_old = frame_res_detected * 2 + frame_res_lace_detected;
-				frame_res_cnt = currprefs.gfx_autoresolution_delay;
-				if (frame_res_cnt <= 0)
-					frame_res_cnt = 1;
 			}
 		}
 	}
 	for (int i = 0; i <= RES_MAX; i++)
 		resolution_count[i] = 0;
+	lines_count = 0;
 	frame_res = -1;
 	frame_res_lace = 0;
 
@@ -2720,7 +2842,7 @@ void putpixel (uae_u8 *buf, int bpp, int x, xcolnr c8, int opaq)
 	case 4:
 		{
 			int i;
-			if (1 || opaq || currprefs.gfx_filter == 0) {
+			if (1 || opaq || currprefs.gf[0].gfx_filter == 0) {
 				uae_u32 *p = (uae_u32*)buf + x;
 				*p = c8;
 			} else {
@@ -2760,7 +2882,9 @@ static void draw_debug_status_line (int line)
 	xlinebuffer = gfxvidinfo.linemem;
 	if (xlinebuffer == 0)
 		xlinebuffer = row_map[line];
+#ifdef DEBUGGER
 	debug_draw_cycles (xlinebuffer, gfxvidinfo.pixbytes, line, gfxvidinfo.outwidth, gfxvidinfo.outheight, xredcolors, xgreencolors, xbluecolors);
+#endif
 }
 
 #define LIGHTPEN_HEIGHT 12
@@ -2862,12 +2986,12 @@ static void lightpen_update (void)
 
 static void draw_frame2 (void)
 {
-	for (int i = 0; i < max_ypos_thisframe; i++) {
+	int i;
+	for ( i = 0; i < max_ypos_thisframe; i++) {
 		int i1 = i + min_ypos_for_screen;
 		int line = i + thisframe_y_adjust_real;
-		int where2;
+		int where2 = amiga2aspect_line_map[i1];
 
-		where2 = amiga2aspect_line_map[i1];
 		if (where2 >= gfxvidinfo.inheight)
 			break;
 		if (where2 < 0)
@@ -2875,30 +2999,6 @@ static void draw_frame2 (void)
 		hposblank = 0;
 		pfield_draw_line (line, where2, amiga2aspect_line_map[i1 + 1]);
 	}
-#if 0
-	/* clear possible old garbage at the bottom if emulated area become smaller */
-	for (i = last_max_ypos; i < gfxvidinfo.outheight; i++) {
-		int i1 = i + min_ypos_for_screen;
-		int line = i + thisframe_y_adjust_real;
-		int where2 = amiga2aspect_line_map[i1];
-
-		if (where2 >= gfxvidinfo.outheight)
-			break;
-		if (where2 < 0)
-			continue;
-
-		hposblank = i > last_max_ypos || i >= max_ypos_thisframe;
-
-		xlinebuffer = gfxvidinfo.linemem;
-		if (xlinebuffer == 0)
-			xlinebuffer = row_map[where2];
-		xlinebuffer -= linetoscr_x_adjust_bytes;
-		fill_line ();
-		if (line < max_ypos_thisframe)
-			linestate[line] = LINE_UNDECIDED;
-		do_flush_line (where2);
-	}
-#endif
 }
 
 bool draw_frame (struct vidbuffer *vb)
@@ -3029,7 +3129,7 @@ void hardware_line_completed (int lineno)
 #endif
 }
 
-void check_picasso (void)
+static void check_picasso (void)
 {
 #ifdef PICASSO96
 	if (picasso_on && picasso_redraw_necessary)
@@ -3079,10 +3179,10 @@ bool vsync_handle_check (void)
 		notice_screen_contents_lost ();
 		notice_new_xcolors ();
 	}
-	check_prefs_changed_audio ();
-#ifdef SCSI	
+#ifdef SCSI
 	check_prefs_changed_cd ();
 #endif
+	check_prefs_changed_audio ();
 	check_prefs_changed_custom ();
 	check_prefs_changed_cpu ();
 	check_picasso ();
@@ -3092,7 +3192,7 @@ bool vsync_handle_check (void)
 void vsync_handle_redraw (int long_field, int lof_changed, uae_u16 bplcon0p, uae_u16 bplcon3p)
 {
 	last_redraw_point++;
-	if (lof_changed || interlace_seen <= 0 || (currprefs.gfx_scanlines >= 2 && interlace_seen > 0) || last_redraw_point >= 2 || long_field || doublescan < 0) {
+	if (lof_changed || interlace_seen <= 0 || (currprefs.gfx_iscanlines && interlace_seen > 0) || last_redraw_point >= 2 || long_field || doublescan < 0) {
 		last_redraw_point = 0;
 
 		if (framecnt == 0)
@@ -3118,7 +3218,7 @@ void vsync_handle_redraw (int long_field, int lof_changed, uae_u16 bplcon0p, uae
 #endif
 			quit_program = -quit_program;
 			set_inhibit_frame (IHF_QUIT_PROGRAM);
-			set_special (SPCFLAG_BRK);
+			set_special (SPCFLAG_BRK | SPCFLAG_MODE_CHANGE);
 			return;
 		}
 
@@ -3176,25 +3276,23 @@ void hsync_record_line_state (int lineno, enum nln_how how, int changed)
 			|| state[1] == LINE_AS_PREVIOUS)
 			state[1] = LINE_DECIDED; //LINE_BLACK;
 		break;
+	case nln_lower_black_always:
+		state[1] = LINE_BLACK;
+		*state = LINE_DECIDED;
+		break;
 	case nln_lower_black:
-		if (currprefs.gfx_scanlines >= 4) {
-			state[1] = LINE_BLACK;
-			*state = LINE_DECIDED;
-		} else {
-			changed += state[0] != LINE_DONE;
-			state[1] = LINE_DONE;
-			*state = changed ? LINE_DECIDED : LINE_DONE;
-		}
+		changed += state[0] != LINE_DONE;
+		state[1] = LINE_DONE;
+		*state = changed ? LINE_DECIDED : LINE_DONE;
+		break;
+	case nln_upper_black_always:
+		*state = LINE_DECIDED;
+		state[-1] = LINE_BLACK;
 		break;
 	case nln_upper_black:
-		if (currprefs.gfx_scanlines >= 4) {
-			*state = LINE_DECIDED;
-			state[-1] = LINE_BLACK;
-		} else {
-			changed += state[0] != LINE_DONE;
-			*state = changed ? LINE_DECIDED : LINE_DONE;
-			state[-1] = LINE_DONE;
-		}
+		changed += state[0] != LINE_DONE;
+		*state = changed ? LINE_DECIDED : LINE_DONE;
+		state[-1] = LINE_DONE;
 		break;
 	}
 }

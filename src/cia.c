@@ -85,7 +85,7 @@ static unsigned long ciaata_passed, ciaatb_passed, ciabta_passed, ciabtb_passed;
 
 static unsigned long ciaatod, ciabtod, ciaatol, ciabtol, ciaaalarm, ciabalarm;
 static int ciaatlatch, ciabtlatch;
-static bool oldled, oldovl, oldcd32mute;
+static bool oldovl, oldcd32mute;
 static bool led;
 static int led_old_brightness;
 static unsigned long led_cycles_on, led_cycles_off, led_cycle;
@@ -114,19 +114,47 @@ static void setclr (unsigned int *p, unsigned int val)
 	}
 }
 
+/* delay interrupt after current CIA register access if
+ * interrupt would have triggered mid access
+ */
+static int cia_interrupt_disabled;
+static int cia_interrupt_delay;
+
 static void ICR (uae_u32 data)
 {
 	INTREQ_0 (0x8000 | data);
 }
+
 static void ICRA (uae_u32 data)
 {
-	ICR (data);
 	ciaaicr |= 0x40;
+#if 1
+	if (currprefs.cpu_cycle_exact && !(ciaaicr & 0x20) && (cia_interrupt_disabled & 1)) {
+		cia_interrupt_delay |= 1;
+#if CIAB_DEBUG_IRQ
+		write_log(_T("ciab interrupt disabled ICR=%02X PC=%x\n"), ciabicr, M68K_GETPC);
+#endif
+		return;
+	}
+#endif
+	ciaaicr |= 0x20;
+	ICR (0x0008);
 }
+
 static void ICRB (uae_u32 data)
 {
-	ICR (data);
 	ciabicr |= 0x40;
+#if 1
+	if (currprefs.cpu_cycle_exact && !(ciabicr & 0x20) && (cia_interrupt_disabled & 2)) {
+		cia_interrupt_delay |= 2;
+#if CIAB_DEBUG_IRQ
+		write_log(_T("ciab interrupt disabled ICR=%02X PC=%x\n"), ciabicr, M68K_GETPC);
+#endif
+		return;
+	}
+#endif
+	ciabicr |= 0x20;
+	ICR (0x2000);
 }
 
 static void RethinkICRA (void)
@@ -137,10 +165,11 @@ static void RethinkICRA (void)
 #endif
 		if (!(ciaaicr & 0x80)) {
 			ciaaicr |= 0x80;
-			if (currprefs.cpu_cycle_exact)
-				event2_newevent_xx (-1, DIV10 + 2 * CYCLE_UNIT + CYCLE_UNIT / 2, 0x0008, ICRA);
-			else
+			if (currprefs.cpu_cycle_exact) {
+				event2_newevent_xx (-1, DIV10 + 2 * CYCLE_UNIT + CYCLE_UNIT / 2, 0, ICRA);
+			} else {
 				ICRA (0x0008);
+			}
 		}
 	}
 }
@@ -153,10 +182,11 @@ static void RethinkICRB (void)
 #endif
 		if (!(ciabicr & 0x80)) {
 			ciabicr |= 0x80;
-			if (currprefs.cpu_cycle_exact)
-				event2_newevent_xx (-1, DIV10 + 2 * CYCLE_UNIT + CYCLE_UNIT / 2, 0x2000, ICRB);
-			else
-				ICRB (0x2000);
+			if (currprefs.cpu_cycle_exact) {
+				event2_newevent_xx (-1, DIV10 + 2 * CYCLE_UNIT + CYCLE_UNIT / 2, 0, ICRB);
+			} else {
+				ICRB (0);
+			}
 		}
 	}
 }
@@ -164,9 +194,9 @@ static void RethinkICRB (void)
 void rethink_cias (void)
 {
 	if (ciaaicr & 0x40)
-		ICRA (0x0008);
+		ICRA (0);
 	if (ciabicr & 0x40)
-		ICRB (0x2000);
+		ICRB (0);
 }
 
 /* Figure out how many CIA timer cycles have passed for each timer since the
@@ -860,7 +890,7 @@ void CIAA_tod_inc (int cycles)
 	event2_newevent_xx (-1, cycles + TOD_INC_DELAY, 0, CIAA_tod_handler);
 }
 
-static void bfe001_change (void)
+static void check_led (void)
 {
 	uae_u8 v = ciaapra;
 	bool led2;
@@ -872,6 +902,12 @@ static void bfe001_change (void)
 		led = led2;
 		led_old_brightness = -1;
 	}
+}
+
+static void bfe001_change (void)
+{
+	uae_u8 v = ciaapra;
+	check_led ();
 	if (currprefs.cs_ciaoverlay && (v & 1) != oldovl) {
 		oldovl = v & 1;
 		if (!oldovl) {
@@ -1012,7 +1048,7 @@ static uae_u8 ReadCIAA (unsigned int addr)
 #endif
 		return ciaasdr;
 	case 13:
-		tmp = ciaaicr & ~0x40;
+		tmp = ciaaicr & ~(0x40 | 0x20);
 		ciaaicr = 0;
 		return tmp;
 	case 14:
@@ -1130,7 +1166,11 @@ static uae_u8 ReadCIAB (unsigned int addr)
 	case 12:
 		return ciabsdr;
 	case 13:
-		tmp = ciabicr & ~0x40;
+#if CIAB_DEBUG_IRQ
+		if (ciabicr & (0x80 | 0x40))
+			write_log (_T("CIAB IRQ cleared PC=%x\n"), M68K_GETPC);
+#endif
+		tmp = ciabicr & ~(0x40 | 0x20);
 		ciabicr = 0;
 		return tmp;
 	case 14:
@@ -1493,7 +1533,6 @@ void CIA_reset (void)
 	kblostsynccnt = 0;
 	serbits = 0;
 	oldcd32mute = 1;
-	oldled = true;
 	resetwarning_phase = resetwarning_timer = 0;
 	heartbeat_cnt = 0;
 	ciab_tod_event_state = 0;
@@ -1517,6 +1556,7 @@ void CIA_reset (void)
 		DISK_select_set (ciabprb);
 	}
 	map_overlay (0);
+	check_led ();
 #ifdef SERIAL_PORT
 	if (currprefs.use_serial && !savestate_state)
 		serial_dtr_off (); /* Drop DTR at reset */
@@ -1541,13 +1581,13 @@ void CIA_reset (void)
 
 void dumpcia (void)
 {
-	write_log (_T("A: CRA %02x CRB %02x ICR %02x IM %02x TA %04x (%04x) TB %04x (%04x)\n"),
+	write_log (_T("A: CRA %02x CRB %02x ICR %02x IM %02x TA %04lx (%04lx) TB %04lx (%04lx)\n"),
 		ciaacra, ciaacrb, ciaaicr, ciaaimask, ciaata, ciaala, ciaatb, ciaalb);
-	write_log (_T("TOD %06x (%06x) ALARM %06x %c%c CYC=%08X\n"),
+	write_log (_T("TOD %06lx (%06lx) ALARM %06lx %c%c CYC=%08lX\n"),
 		ciaatod, ciaatol, ciaaalarm, ciaatlatch ? 'L' : ' ', ciaatodon ? ' ' : 'S', get_cycles ());
-	write_log (_T("B: CRA %02x CRB %02x ICR %02x IM %02x TA %04x (%04x) TB %04x (%04x)\n"),
+	write_log (_T("B: CRA %02x CRB %02x ICR %02x IM %02x TA %04lx (%04lx) TB %04lx (%04lx)\n"),
 		ciabcra, ciabcrb, ciabicr, ciabimask, ciabta, ciabla, ciabtb, ciablb);
-	write_log (_T("TOD %06x (%06x) ALARM %06x %c%c CLK=%d\n"),
+	write_log (_T("TOD %06lx (%06lx) ALARM %06lx %c%c CLK=%d\n"),
 		ciabtod, ciabtol, ciabalarm, ciabtlatch ? 'L' : ' ', ciabtodon ? ' ' : 'S', div10 / CYCLE_UNIT);
 }
 
@@ -1581,10 +1621,14 @@ STATIC_INLINE bool isgayle (void)
 	return currprefs.cs_ide || currprefs.cs_pcmcia;
 }
 
-static void cia_wait_pre (void)
+static void cia_wait_pre (int cianummask)
 {
 	if (currprefs.cachesize)
 		return;
+
+	if (currprefs.cpu_cycle_exact) {
+		cia_interrupt_disabled |= cianummask;
+	}
 
 #ifndef CUSTOM_SIMPLE
 	int div = (get_cycles () - eventtab[ev_cia].oldcycles) % DIV10;
@@ -1608,7 +1652,7 @@ static void cia_wait_pre (void)
 #endif
 }
 
-static void cia_wait_post (uae_u32 value)
+static void cia_wait_post (int cianummask, uae_u32 value)
 {
 	if (currprefs.cachesize) {
 		do_cycles (8 * CYCLE_UNIT /2);
@@ -1618,17 +1662,45 @@ static void cia_wait_post (uae_u32 value)
 			x_do_cycles_post (c, value);
 		else
 			do_cycles (c);
+		if (currprefs.cpu_cycle_exact) {
+			cia_interrupt_disabled &= ~cianummask;
+			if ((cia_interrupt_delay & cianummask) & 1) {
+				cia_interrupt_delay &= ~1;
+				ICR(0x0008);
+			}
+			if ((cia_interrupt_delay & cianummask) & 2) {
+				cia_interrupt_delay &= ~2;
+				ICR(0x2000);
+			}
+		}
 	}
+	if (!currprefs.cpu_cycle_exact && cia_interrupt_delay) {
+		int v = cia_interrupt_delay;
+		cia_interrupt_delay = 0;
+		if (v & 1)
+			ICR(0x0008);
+		if (v & 2)
+			ICR(0x2000);
+	}
+}
+
+static bool iscia (uaecptr addr)
+{
+	uaecptr mask = addr & 0xf000;
+	return mask == 0xe000 || mask == 0xd000;
 }
 
 static bool isgaylenocia (uaecptr addr)
 {
-	// gayle CIA region is only 4096 bytes at 0xbfd000 and 0xbfe000
 	if (!isgayle ())
 		return true;
-	uaecptr mask = addr & 0xf000;
-	bool cia = mask == 0xe000 || mask == 0xd000;
-	return cia;
+	// gayle CIA region is only 4096 bytes at 0xbfd000 and 0xbfe000
+	return iscia(addr);
+}
+
+static bool isgarynocia (uaecptr addr)
+{
+	return !iscia(addr) && currprefs.cs_fatgaryrev >= 0;
 }
 
 static uae_u32 REGPARAM2 cia_bget (uaecptr addr)
@@ -1640,37 +1712,49 @@ static uae_u32 REGPARAM2 cia_bget (uaecptr addr)
 	special_mem |= S_READ;
 #endif
 
+	if (isgarynocia(addr))
+		return dummy_get(addr, 1, false);
+
 	if (!isgaylenocia (addr))
 		return v;
 
-	cia_wait_pre ();
 	switch ((addr >> 12) & 3) {
 	case 0:
-		if (!issinglecia ())
+		if (!issinglecia ()) {
+			cia_wait_pre (1 | 2);
 			v = (addr & 1) ? ReadCIAA (r) : ReadCIAB (r);
+			cia_wait_post (1 | 2, v);
+		}
 		break;
 	case 1:
-		if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible)
+		cia_wait_pre (2);
+		if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible) {
 			v = (addr & 1) ? regs.irc : ReadCIAB (r);
-		else
+		} else {
 			v = (addr & 1) ? 0xff : ReadCIAB (r);
+		}
+		cia_wait_post (2, v);
 		break;
 	case 2:
+		cia_wait_pre (1);
 		if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible)
 			v = (addr & 1) ? ReadCIAA (r) : regs.irc >> 8;
 		else
 			v = (addr & 1) ? ReadCIAA (r) : 0xff;
+		cia_wait_post (1, v);
 		break;
 	case 3:
-		if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible)
+		if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible) {
+			cia_wait_pre (0);
 			v = (addr & 1) ? regs.irc : regs.irc >> 8;
+			cia_wait_post (0, v);
+		}
 		if (warned > 0 || currprefs.illegal_mem) {
 			write_log (_T("cia_bget: unknown CIA address %08X=%02X PC=%08X\n"), addr, v & 0xff, M68K_GETPC);
 			warned--;
 		}
 		break;
 	}
-	cia_wait_post (v);
 
 	return v;
 }
@@ -1684,32 +1768,43 @@ static uae_u32 REGPARAM2 cia_wget (uaecptr addr)
 	special_mem |= S_READ;
 #endif
 
+	if (isgarynocia(addr))
+		return dummy_get(addr, 2, false);
+
 	if (!isgaylenocia (addr))
 		return v;
 
-	cia_wait_pre ();
 	switch ((addr >> 12) & 3)
 	{
 	case 0:
-		if (!issinglecia ())
+		if (!issinglecia ()) {
+			cia_wait_pre (1 | 2);
 			v = (ReadCIAB (r) << 8) | ReadCIAA (r);
+			cia_wait_post (1 | 2, v);
+		}
 		break;
 	case 1:
+		cia_wait_pre (2);
 		v = (ReadCIAB (r) << 8) | 0xff;
+		cia_wait_post (2, v);
 		break;
 	case 2:
+		cia_wait_pre (1);
 		v = (0xff << 8) | ReadCIAA (r);
+		cia_wait_post (1, v);
 		break;
 	case 3:
-		if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible)
+		if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible) {
+			cia_wait_pre (0);
 			v = regs.irc;
+			cia_wait_post (0, v);
+		}
 		if (warned > 0 || currprefs.illegal_mem) {
 			write_log (_T("cia_wget: unknown CIA address %08X=%04X PC=%08X\n"), addr, v & 0xffff, M68K_GETPC);
 			warned--;
 		}
 		break;
 	}
-	cia_wait_post (v);
 	return v;
 }
 
@@ -1742,21 +1837,26 @@ static void REGPARAM2 cia_bput (uaecptr addr, uae_u32 value)
 	special_mem |= S_WRITE;
 #endif
 
+	if (isgarynocia(addr)) {
+		dummy_put(addr, 1, false);
+		return;
+	}
+
 	if (!isgaylenocia (addr))
 		return;
 
-	cia_wait_pre ();
 	if (!issinglecia () || (addr & 0x3000) != 0) {
+		cia_wait_pre (((addr & 0x2000) == 0 ? 1 : 0) | ((addr & 0x1000) == 0 ? 2 : 0));
 		if ((addr & 0x2000) == 0)
 			WriteCIAB (r, value);
 		if ((addr & 0x1000) == 0)
 			WriteCIAA (r, value);
+		cia_wait_post (((addr & 0x2000) == 0 ? 1 : 0) | ((addr & 0x1000) == 0 ? 2 : 0), value);
 		if (((addr & 0x3000) == 0x3000) && (warned > 0 || currprefs.illegal_mem)) {
 			write_log (_T("cia_bput: unknown CIA address %08X=%082X PC=%08X\n"), addr, value & 0xff, M68K_GETPC);
 			warned--;
 		}
 	}
-	cia_wait_post (value);
 }
 
 static void REGPARAM2 cia_wput (uaecptr addr, uae_u32 value)
@@ -1767,21 +1867,26 @@ static void REGPARAM2 cia_wput (uaecptr addr, uae_u32 value)
 	special_mem |= S_WRITE;
 #endif
 
+	if (isgarynocia(addr)) {
+		dummy_put(addr, 2, false);
+		return;
+	}
+
 	if (!isgaylenocia (addr))
 		return;
 
-	cia_wait_pre ();
 	if (!issinglecia () || (addr & 0x3000) != 0) {
+		cia_wait_pre (((addr & 0x2000) == 0 ? 1 : 0) | ((addr & 0x1000) == 0 ? 2 : 0));
 		if ((addr & 0x2000) == 0)
 			WriteCIAB (r, value >> 8);
 		if ((addr & 0x1000) == 0)
 			WriteCIAA (r, value & 0xff);
+		cia_wait_post (((addr & 0x2000) == 0 ? 1 : 0) | ((addr & 0x1000) == 0 ? 2 : 0), value);
 		if (((addr & 0x3000) == 0x3000) && (warned > 0 || currprefs.illegal_mem)) {
 			write_log (_T("cia_wput: unknown CIA address %08X=%04X %08X\n"), addr, value & 0xffff, M68K_GETPC);
 			warned--;
 		}
 	}
-	cia_wait_post (value);
 }
 
 static void REGPARAM2 cia_lput (uaecptr addr, uae_u32 value)
@@ -1893,7 +1998,7 @@ static void write_battclock (void)
 		return;
 	struct zfile *f = zfile_fopen (currprefs.rtcfile, _T("wb"), ZFD_NORMAL);
 	if (f) {
-//		uae_u8 zero[13] = { 0 };
+// REMOVEME:		uae_u8 zero[13] = { 0 };
 		struct tm *ct;
 		time_t t = time (0);
 		t += currprefs.cs_rtc_adjust;
@@ -1951,11 +2056,17 @@ void rtc_hardreset (void)
 
 static uae_u32 REGPARAM2 clock_lget (uaecptr addr)
 {
+	if ((addr & 0xffff) >= 0x8000 && currprefs.cs_fatgaryrev >= 0)
+		return dummy_get(addr, 4, false);
+
 	return (clock_wget (addr) << 16) | clock_wget (addr + 2);
 }
 
 static uae_u32 REGPARAM2 clock_wget (uaecptr addr)
 {
+	if ((addr & 0xffff) >= 0x8000 && currprefs.cs_fatgaryrev >= 0)
+		return dummy_get(addr, 2, false);
+
 	return (clock_bget (addr) << 8) | clock_bget (addr + 1);
 }
 
@@ -1968,10 +2079,15 @@ static uae_u32 REGPARAM2 clock_bget (uaecptr addr)
 #ifdef JIT
 	special_mem |= S_READ;
 #endif
+
+	if ((addr & 0xffff) >= 0x8000 && currprefs.cs_fatgaryrev >= 0)
+		return dummy_get(addr, 1, false);
+
 #ifdef CDTV
-	if (currprefs.cs_cdtvram && addr >= 0xdc8000)
+	if (currprefs.cs_cdtvram && (addr & 0xffff) >= 0x8000)
 		return cdtv_battram_read (addr);
 #endif
+
 	addr &= 0x3f;
 	if ((addr & 3) == 2 || (addr & 3) == 0 || currprefs.cs_rtc == 0) {
 		if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible)
@@ -1987,12 +2103,22 @@ static uae_u32 REGPARAM2 clock_bget (uaecptr addr)
 
 static void REGPARAM2 clock_lput (uaecptr addr, uae_u32 value)
 {
+	if ((addr & 0xffff) >= 0x8000 && currprefs.cs_fatgaryrev >= 0) {
+		dummy_put(addr, 4, value);
+		return;
+	}
+
 	clock_wput (addr, value >> 16);
 	clock_wput (addr + 2, value);
 }
 
 static void REGPARAM2 clock_wput (uaecptr addr, uae_u32 value)
 {
+	if ((addr & 0xffff) >= 0x8000 && currprefs.cs_fatgaryrev >= 0) {
+		dummy_put(addr, 2, value);
+		return;
+	}
+
 	clock_bput (addr, value >> 8);
 	clock_bput (addr + 1, value);
 }
@@ -2003,12 +2129,19 @@ static void REGPARAM2 clock_bput (uaecptr addr, uae_u32 value)
 	special_mem |= S_WRITE;
 #endif
 //	write_log(_T("W: %x (%x): %x, PC=%08x\n"), addr, (addr & 0xff) >> 2, value & 0xff, M68K_GETPC);
+
+	if ((addr & 0xffff) >= 0x8000 && currprefs.cs_fatgaryrev >= 0) {
+		dummy_put(addr, 1, value);
+		return;
+	}
+
 #ifdef CDTV
-	if (currprefs.cs_cdtvram && addr >= 0xdc8000) {
+	if (currprefs.cs_cdtvram && (addr & 0xffff) >= 0x8000) {
 		cdtv_battram_write (addr, value);
 		return;
 	}
 #endif
+
 	addr &= 0x3f;
 	if ((addr & 1) != 1 || currprefs.cs_rtc == 0)
 		return;

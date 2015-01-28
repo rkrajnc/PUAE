@@ -1,7 +1,3 @@
-#pragma once
-#ifndef SRC_INCLUDE_CIA_H_INCLUDED
-#define SRC_INCLUDE_CIA_H_INCLUDED 1
-
  /*
   * UAE - The Un*x Amiga Emulator
   *
@@ -9,6 +5,10 @@
   *
   * (c) 1995 Bernd Schmidt
   */
+
+#pragma once
+#ifndef CIA_H
+#define CIA_H
 
 void CIA_reset (void);
 void CIA_vsync_prehandler (void);
@@ -37,4 +37,5 @@ int parallel_direct_read_status (uae_u8*);
 
 void rtc_hardreset (void);
 
-#endif // SRC_INCLUDE_CIA_H_INCLUDED
+#endif // CIA_H
+

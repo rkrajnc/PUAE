@@ -266,7 +266,9 @@ enum nln_how {
 	/* This line normal, next one black.  */
 	nln_nblack,
 	nln_upper_black,
-	nln_lower_black
+	nln_lower_black,
+	nln_upper_black_always,
+	nln_lower_black_always
 };
 
 extern void hsync_record_line_state (int lineno, enum nln_how, int changed);
@@ -279,6 +281,7 @@ extern bool notice_interlace_seen (bool);
 extern void notice_resolution_seen (int, bool);
 extern void frame_drawn (void);
 extern void redraw_frame (void);
+//extern bool draw_frame (struct vidbuffer*);
 extern int get_custom_limits (int *pw, int *ph, int *pdx, int *pdy, int *prealh);
 extern void set_custom_limits (int w, int h, int dx, int dy);
 extern void get_custom_topedge (int *x, int *y, bool max);
@@ -306,3 +309,4 @@ STATIC_INLINE void toggle_inhibit_frame (int bit)
 {
 	inhibit_frame ^= 1 << bit;
 }
+

@@ -90,6 +90,9 @@ extern signed long pissoff;
 extern struct ev eventtab[ev_max];
 extern struct ev2 eventtab2[ev2_max];
 
+extern int hpos_offset;
+extern int maxhpos;
+
 STATIC_INLINE void cycles_do_special (void)
 {
 #ifdef JIT
@@ -123,10 +126,13 @@ STATIC_INLINE void set_cycles (unsigned long int x)
 #endif
 }
 
-STATIC_INLINE int current_hpos (void)
+STATIC_INLINE int current_hpos_safe (void)
 {
-    return (get_cycles () - eventtab[ev_hsync].oldcycles) / CYCLE_UNIT;
+    int hp = (get_cycles () - eventtab[ev_hsync].oldcycles) / CYCLE_UNIT;
+	return hp;
 }
+
+extern int current_hpos(void);
 
 STATIC_INLINE bool cycles_in_range (unsigned long endcycles)
 {

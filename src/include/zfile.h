@@ -1,14 +1,14 @@
-#pragma once
-#ifndef SRC_INCLUDE_ZFILE_H_INCLUDED
-#define SRC_INCLUDE_ZFILE_H_INCLUDED 1
+/*
+ * UAE - The Un*x Amiga Emulator
+ *
+ * routines to handle compressed file automatically
+ *
+ * (c) 1996 Samuel Devulder
+ */
 
- /*
-  * UAE - The Un*x Amiga Emulator
-  *
-  * routines to handle compressed file automatically
-  *
-  * (c) 1996 Samuel Devulder
-  */
+#pragma once
+#ifndef ZFILE_H
+#define ZFILE_H
 
 struct zvolume;
 struct zdirectory;
@@ -43,8 +43,8 @@ struct fs_filehandle
 };
 
 extern struct zfile *zfile_fopen (const TCHAR *, const TCHAR *, int mask);
-extern struct zfile *zfile_fopen2 (const TCHAR *, const TCHAR *);
-extern struct zfile *zfile_fopen4 (const TCHAR *, const TCHAR *, int mask, int index);
+//extern struct zfile *zfile_fopen2 (const TCHAR *, const TCHAR *);
+extern struct zfile *zfile_fopen_nmmi (const TCHAR *, const TCHAR *, int mask, int index);
 extern struct zfile *zfile_fopen_empty (struct zfile*, const TCHAR *name, uae_u64 size);
 extern struct zfile *zfile_fopen_empty2 (struct zfile*, const TCHAR *name);
 //extern struct zfile *zfile_fopen_data (const TCHAR *name, uae_u64 size, const uae_u8 *data);
@@ -144,4 +144,4 @@ extern struct zfile *zfile_fopen_data (const TCHAR *name, uae_u64 size, const ua
 extern void timeval_to_amiga (struct mytimeval *tv, int* days, int* mins, int* ticks);
 extern void amiga_to_timeval (struct mytimeval *tv, int days, int mins, int ticks);
 
-#endif /* SRC_INCLUDE_ZFILE_H_INCLUDED */
+#endif // ZFILE_H

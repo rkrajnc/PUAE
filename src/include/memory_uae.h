@@ -235,9 +235,12 @@ extern void expamem_init (void);
 extern void expamem_reset (void);
 extern void expamem_next (void);
 
-extern uae_u16 last_custom_value1;
+extern uae_u32 last_custom_value1;
 
 /* Default memory access functions */
+
+extern void dummy_put (uaecptr addr, int size, uae_u32 val);
+extern uae_u32 dummy_get (uaecptr addr, int size, bool inst);
 
 extern int REGPARAM3 default_check(uaecptr addr, uae_u32 size) REGPARAM;
 extern uae_u8 *REGPARAM3 default_xlate(uaecptr addr) REGPARAM;
@@ -468,5 +471,4 @@ extern void memcpyah (uae_u8 *dst, uaecptr src, int size);
 extern uae_s32 getz2size (struct uae_prefs *p);
 extern ULONG getz2endaddr (void);
 
-#endif
-
+#endif /* MEMORY_H */

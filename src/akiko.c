@@ -572,7 +572,7 @@ static int statusfunc (int status)
 		if (status == AUDIO_STATUS_IN_PROGRESS) {
 			cdrom_playing = 1;
 			cdrom_audiotimeout = 1;
-		} 
+		}
 		if (cdrom_playing && status != AUDIO_STATUS_IN_PROGRESS && status != AUDIO_STATUS_PAUSED && status != AUDIO_STATUS_NOT_SUPPORTED) {
 			cdrom_audiotimeout = -1;
 		}
@@ -770,7 +770,7 @@ static void sys_cddev_close (void)
 		sys_command_close (unitnum);
 	}
 	unitnum = -1;
-	
+
 }
 
 static int command_lengths[] = { 1,2,1,1,12,2,1,1,4,1,2,-1,-1,-1,-1,-1 };
@@ -789,7 +789,7 @@ static int cdrom_start_return_data (int len)
 /*
 	RX DMA channel writes bytes to memory if DMA enabled, cdcomrxinx != cdcomrxcmp
 	and there is data available from CDROM firmware code.
-	
+
 	Triggers CDINTERRUPT_RXDMADONE and stops transfer (even if there is
 	more data available) when cdcomrxinx matches cdcomrxcmp
 */
@@ -1813,7 +1813,7 @@ static void patchrom (void)
 				p[i + 8] = 0x4e;
 				p[i + 9] = 0x71;
 				protect_roms (true);
-				write_log (_T("extended rom delay loop patched at 0x%p\n"), i + 6 + 0xe00000);
+				write_log (_T("extended rom delay loop patched at 0x%08X\n"), i + 6 + 0xe00000);
 				return;
 			}
 		}

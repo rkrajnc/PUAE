@@ -186,7 +186,7 @@ struct inputdevice_functions inputdevicefunc_joystick = {
 /*
  * Set default inputdevice config for SDL joysticks
  */
-int input_get_default_joystick (struct uae_input_device *uid, int num, int port, int af, int mode, bool gp)
+int input_get_default_joystick (struct uae_input_device *uid, int num, int port, int af, int mode, bool gp, bool joymouseswap)
 {
 	int h,v;
 //	unsigned int j;
@@ -221,7 +221,7 @@ int input_get_default_joystick (struct uae_input_device *uid, int num, int port,
 	}
 
 #if 0
-	for (j = 2; j < MAX_MAPPINGS - 1; j++) {
+	for (int j = 2; j < MAX_MAPPINGS - 1; j++) {
 		int am = did->axismappings[j];
 		if (am == DIJOFS_POV(0) || am == DIJOFS_POV(1) || am == DIJOFS_POV(2) || am == DIJOFS_POV(3)) {
 			setid (uid, num, ID_AXIS_OFFSET + j + 0, 0, port, h);

@@ -1,8 +1,15 @@
+/*
+ * UAE - The Un*x Amiga Emulator
+ *
+ * uae.resource
+ *
+ */
+
 #pragma once
-#ifndef SRC_UAERESOURCE_H_INCLUDED
-#define SRC_UAERESOURCE_H_INCLUDED 1
+#ifndef UAERESOURCE_H
+#define UAERESOURCE_H
 
 uaecptr uaeres_startup (uaecptr resaddr);
 void uaeres_install (void);
 
-#endif // SRC_UAERESOURCE_H_INCLUDED
+#endif // UAERESOURCE_H

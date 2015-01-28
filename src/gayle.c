@@ -3,11 +3,12 @@
  *
  * Gayle (and motherboard resources) memory bank
  *
-* (c) 2006 - 2013 Toni Wilen
+ * (c) 2006 - 2014 Toni Wilen
  */
 
 #include "sysconfig.h"
 #include "sysdeps.h"
+#include <unistd.h>
 
 #include "options.h"
 
@@ -55,7 +56,10 @@ DD2000 to DDFFFF        A4000 IDE
 DE0000 to DEFFFF	64 KB Motherboard resources
 */
 
+/* A4000T NCR */
 #define NCR_OFFSET 0x40
+#define NCR_ALT_OFFSET 0x80
+#define NCR_MASK 0x3f
 
 /* Gayle definitions from Linux drivers and preliminary Gayle datasheet */
 
@@ -128,8 +132,8 @@ read 1 byte to stop reset */
 #define GAYLE_CS_WR	0x08    /* write enable (1 == enabled) */
 #define GAYLE_CS_BSY	0x04    /* credit card busy */
 #define GAYLE_CS_IRQ	0x04    /* interrupt request */
-#define GAYLE_CS_DAEN   0x02    /* enable digital audio */ 
-#define GAYLE_CS_DIS    0x01    /* disable PCMCIA slot */ 
+#define GAYLE_CS_DAEN   0x02    /* enable digital audio */
+#define GAYLE_CS_DIS    0x01    /* disable PCMCIA slot */
 
 /* DA9000 */
 #define GAYLE_IRQ_IDE	    0x80
@@ -141,8 +145,8 @@ read 1 byte to stop reset */
 #define GAYLE_IRQ_WR	    0x08    /* write enable (1 == enabled) */
 #define GAYLE_IRQ_BSY	    0x04    /* credit card busy */
 #define GAYLE_IRQ_IRQ	    0x04    /* interrupt request */
-#define GAYLE_IRQ_RESET	    0x02    /* reset machine after CCDET change */ 
-#define GAYLE_IRQ_BERR      0x01    /* generate bus error after CCDET change */ 
+#define GAYLE_IRQ_RESET	    0x02    /* reset machine after CCDET change */
+#define GAYLE_IRQ_BERR      0x01    /* generate bus error after CCDET change */
 
 /* DAA000 */
 #define GAYLE_INT_IDE	    0x80    /* IDE interrupt enable */
@@ -154,8 +158,8 @@ read 1 byte to stop reset */
 #define GAYLE_INT_WR	    0x08    /* write enable change enabled */
 #define GAYLE_INT_BSY	    0x04    /* credit card busy */
 #define GAYLE_INT_IRQ	    0x04    /* credit card interrupt request */
-#define GAYLE_INT_BVD_LEV   0x02    /* BVD int level, 0=lev2,1=lev6 */ 
-#define GAYLE_INT_BSY_LEV   0x01    /* BSY int level, 0=lev2,1=lev6 */ 
+#define GAYLE_INT_BVD_LEV   0x02    /* BVD int level, 0=lev2,1=lev6 */
+#define GAYLE_INT_BSY_LEV   0x01    /* BSY int level, 0=lev2,1=lev6 */
 
 /* 0xDAB000 GAYLE_CONFIG */
 #define GAYLE_CFG_0V            0x00
@@ -195,7 +199,8 @@ struct ide_hdf
 	int data_multi;
 	int direction; // 0 = read, 1 = write
 	bool intdrq;
-	int lba48;
+	bool lba48;
+	bool lba48cmd;
 	uae_u8 multiple_mode;
 	int irq_delay;
 	int irq;
@@ -275,7 +280,7 @@ static uae_u8 checkpcmciaideirq (void)
 		return 0;
 	if (idedrive[PCMCIA_IDE_ID * 2]->irq)
 		return GAYLE_IRQ_BSY;
-		return 0;
+	return 0;
 }
 
 static bool isdrive (struct ide_hdf *ide)
@@ -295,7 +300,7 @@ static uae_u8 checkgayleideirq (void)
 			irq = true;
 		/* IDE killer feature. Do not eat interrupt to make booting faster. */
 		if (idedrive[i]->irq && !isdrive (idedrive[i]))
-				idedrive[i]->irq = 0;
+			idedrive[i]->irq = 0;
 		if (idedrive[i + 2]->irq && !isdrive (idedrive[i + 2]))
 			idedrive[i + 2]->irq = 0;
 	}
@@ -527,7 +532,7 @@ static void ide_identify_drive (struct ide_hdf *ide)
 	if (ide->atapi)
 		_tcscpy (tmp, _T("UAE-ATAPI"));
 	else
-	_stprintf (tmp, _T("UAE-IDE %s"), ide->hdhfd.hfd.product_id);
+		_stprintf (tmp, _T("UAE-IDE %s"), ide->hdhfd.hfd.product_id);
 	ps (ide, 27, tmp, 40); /* model */
 	pw (ide, 47, MAX_IDE_MULTIPLE_SECTORS >> (ide->blocksize / 512 - 1)); /* max sectors in multiple mode */
 	pw (ide, 48, 1);
@@ -599,7 +604,7 @@ static void reset_device (struct ide_hdf *ide, bool both)
 	set_signature (ide);
 	if (both)
 		set_signature (ide->pair);
-	}
+}
 
 static void ide_execute_drive_diagnostics (struct ide_hdf *ide, bool irq)
 {
@@ -652,7 +657,7 @@ static void ide_set_features (struct ide_hdf *ide)
 
 static void get_lbachs (struct ide_hdf *ide, uae_u64 *lbap, unsigned int *cyl, unsigned int *head, unsigned int *sec)
 {
-	if (ide->lba48 && (ide->regs.ide_select & 0x40)) {
+	if (ide->lba48 && ide->lba48cmd && (ide->regs.ide_select & 0x40)) {
 		uae_u64 lba;
 		lba = (ide->regs.ide_hcyl << 16) | (ide->regs.ide_lcyl << 8) | ide->regs.ide_sector;
 		lba |= ((ide->regs.ide_hcyl2 << 16) | (ide->regs.ide_lcyl2 << 8) | ide->regs.ide_sector2) << 24;
@@ -671,14 +676,14 @@ static void get_lbachs (struct ide_hdf *ide, uae_u64 *lbap, unsigned int *cyl, u
 
 static int get_nsec (struct ide_hdf *ide)
 {
-	if (ide->lba48)
+	if (ide->lba48 && ide->lba48cmd)
 		return (ide->regs.ide_nsector == 0 && ide->regs.ide_nsector2 == 0) ? 65536 : (ide->regs.ide_nsector2 * 256 + ide->regs.ide_nsector);
 	else
 		return ide->regs.ide_nsector == 0 ? 256 : ide->regs.ide_nsector;
 }
 static int dec_nsec (struct ide_hdf *ide, int v)
 {
-	if (ide->lba48) {
+	if (ide->lba48 && ide->lba48cmd) {
 		uae_u16 nsec;
 		nsec = ide->regs.ide_nsector2 * 256 + ide->regs.ide_nsector;
 		ide->regs.ide_nsector -= v;
@@ -693,7 +698,7 @@ static int dec_nsec (struct ide_hdf *ide, int v)
 
 static void put_lbachs (struct ide_hdf *ide, uae_u64 lba, unsigned int cyl, unsigned int head, unsigned int sec, unsigned int inc)
 {
-	if (ide->lba48) {
+	if (ide->lba48 && ide->lba48cmd) {
 		lba += inc;
 		ide->regs.ide_hcyl = (lba >> 16) & 0xff;
 		ide->regs.ide_lcyl = (lba >> 8) & 0xff;
@@ -731,24 +736,24 @@ static void put_lbachs (struct ide_hdf *ide, uae_u64 lba, unsigned int cyl, unsi
 
 static void check_maxtransfer (struct ide_hdf *ide, int state)
 {
-  if (state == 1) {
-    // transfer was started
+	if (state == 1) {
+		// transfer was started
 		if (ide->maxtransferstate < 2 && ide->regs.ide_nsector == 0) {
-      ide->maxtransferstate = 1;
-    } else if (ide->maxtransferstate == 2) {
-      // second transfer was started (part of split)
+			ide->maxtransferstate = 1;
+		} else if (ide->maxtransferstate == 2) {
+			// second transfer was started (part of split)
 			write_log (_T("IDE maxtransfer check detected split >256 block transfer\n"));
-      ide->maxtransferstate = 0;
-    } else {
-      ide->maxtransferstate = 0;
-    }
-  } else if (state == 2) {
-    // address was read
-    if (ide->maxtransferstate == 1)
-      ide->maxtransferstate++;
-    else
-      ide->maxtransferstate = 0;
-  }
+			ide->maxtransferstate = 0;
+		} else {
+			ide->maxtransferstate = 0;
+		}
+	} else if (state == 2) {
+		// address was read
+		if (ide->maxtransferstate == 1)
+			ide->maxtransferstate++;
+		else
+			ide->maxtransferstate = 0;
+	}
 }
 
 static void setdrq (struct ide_hdf *ide)
@@ -803,7 +808,8 @@ static bool atapi_set_size (struct ide_hdf *ide)
 	} else {
 		ide->packet_transfer_size = 12;
 	}
-	write_log (_T("ATAPI data transfer %d/%d bytes\n"), ide->packet_transfer_size, ide->data_size);
+	if (IDE_LOG > 1)
+		write_log (_T("ATAPI data transfer %d/%d bytes\n"), ide->packet_transfer_size, ide->data_size);
 	return true;
 }
 
@@ -832,7 +838,7 @@ static void do_packet_command (struct ide_hdf *ide)
 	if (IDE_LOG > 0) {
 		uae_u8 *c = ide->scsi->cmd;
 		write_log (_T("ATASCSI %02x.%02x.%02x.%02x.%02x.%02x.%02x.%02x.%02x.%02x.%02x.%02x\n"),
-			c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9], c[10], c[11], c[12]);
+			c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9], c[10], c[11]);
 	}
 	ide->direction = 0;
 	scsi_emulate_analyze (ide->scsi);
@@ -844,9 +850,11 @@ static void do_packet_command (struct ide_hdf *ide)
 		ide->regs.ide_status = 0;
 		if (ide->scsi->status) {
 			// error
-			ide->regs.ide_status = ATAPI_STATUS_CHK;
-			ide->regs.ide_error = ide->scsi->status << 4;
+			ide->regs.ide_error = (ide->scsi->sense[2] << 4) | 4;
 			atapi_data_done (ide);
+			ide->regs.ide_status |= ATAPI_STATUS_CHK;
+			atapi_set_size (ide);
+			return;
 		} else if (ide->scsi->data_len) {
 			// data in
 			memcpy (ide->secbuf, ide->scsi->buffer, ide->scsi->data_len);
@@ -900,10 +908,12 @@ static void do_process_rw_command (struct ide_hdf *ide)
 	ide->data_offset = 0;
 	get_lbachs (ide, &lba, &cyl, &head, &sec);
 	nsec = get_nsec (ide);
-	write_log (_T("IDE%d off=%d, nsec=%d (%d) lba%d\n"), ide->num, (uae_u32)lba, nsec, ide->multiple_mode, ide->lba48 ? 48 : 28);
+	if (IDE_LOG > 1)
+		write_log (_T("IDE%d off=%d, nsec=%d (%d) lba48=%d\n"), ide->num, (uae_u32)lba, nsec, ide->multiple_mode, ide->lba48 + ide->lba48cmd);
 	if (nsec * ide->blocksize > ide->hdhfd.size - lba * ide->blocksize) {
 		nsec = (ide->hdhfd.size - lba * ide->blocksize) / ide->blocksize;
-		write_log (_T("IDE%d nsec changed to %d\n"), ide->num, nsec);
+		if (IDE_LOG > 1)
+			write_log (_T("IDE%d nsec changed to %d\n"), ide->num, nsec);
 	}
 	if (nsec <= 0) {
 		ide_data_ready (ide);
@@ -927,8 +937,8 @@ static void do_process_rw_command (struct ide_hdf *ide)
 	put_lbachs (ide, lba, cyl, head, sec, last ? nsec - 1 : nsec);
 	if (last && ide->direction) {
 		ide->intdrq = false;
-			if (IDE_LOG > 1)
-				write_log (_T("IDE%d write finished\n"), ide->num);
+		if (IDE_LOG > 1)
+			write_log (_T("IDE%d write finished\n"), ide->num);
 	}
 	ide_fast_interrupt (ide);
 }
@@ -939,6 +949,7 @@ static void ide_read_sectors (struct ide_hdf *ide, int flags)
 	uae_u64 lba;
 	int multi = flags & 1;
 
+	ide->lba48cmd = (flags & 2) != 0;
 	if (multi && ide->multiple_mode == 0) {
 		ide_fail (ide);
 		return;
@@ -952,7 +963,8 @@ static void ide_read_sectors (struct ide_hdf *ide, int flags)
 		ide_fail_err (ide, IDE_ERR_IDNF);
 		return;
 	}
-	write_log (_T("IDE%d read off=%d, sec=%d (%d) lba%d\n"), ide->num, (uae_u32)lba, nsec, ide->multiple_mode, ide->lba48 ? 48 : 28);
+	if (IDE_LOG > 0)
+		write_log (_T("IDE%d read off=%d, sec=%d (%d) lba48=%d\n"), ide->num, (uae_u32)lba, nsec, ide->multiple_mode, ide->lba48 + ide->lba48cmd);
 	ide->data_multi = multi ? ide->multiple_mode : 1;
 	ide->data_offset = 0;
 	ide->data_size = nsec * ide->blocksize;
@@ -967,6 +979,7 @@ static void ide_write_sectors (struct ide_hdf *ide, int flags)
 	uae_u64 lba;
 	int multi = flags & 1;
 
+	ide->lba48cmd = (flags & 2) != 0;
 	if (multi && ide->multiple_mode == 0) {
 		ide_fail (ide);
 		return;
@@ -981,7 +994,7 @@ static void ide_write_sectors (struct ide_hdf *ide, int flags)
 		return;
 	}
 	if (IDE_LOG > 0)
-		write_log (_T("IDE%d write off=%d, sec=%d (%d) lba%d\n"), ide->num, (uae_u32)lba, nsec, ide->multiple_mode, ide->lba48 ? 48 : 28);
+		write_log (_T("IDE%d write off=%d, sec=%d (%d) lba48=%d\n"), ide->num, (uae_u32)lba, nsec, ide->multiple_mode, ide->lba48 + ide->lba48cmd);
 	if (nsec * ide->blocksize > ide->hdhfd.size - lba * ide->blocksize)
 		nsec = (ide->hdhfd.size - lba * ide->blocksize) / ide->blocksize;
 	if (nsec <= 0) {
@@ -1006,6 +1019,7 @@ static void ide_do_command (struct ide_hdf *ide, uae_u8 cmd)
 		write_log (_T("**** IDE%d command %02X\n"), ide->num, cmd);
 	ide->regs.ide_status &= ~ (IDE_STATUS_DRDY | IDE_STATUS_DRQ | IDE_STATUS_ERR);
 	ide->regs.ide_error = 0;
+	ide->lba48cmd = false;
 
 	if (ide->atapi) {
 
@@ -1099,13 +1113,13 @@ static uae_u16 ide_get_data (struct ide_hdf *ide)
 		if (ide->data_offset == ide->packet_transfer_size) {
 			if (IDE_LOG > 1)
 				write_log (_T("IDE%d ATAPI partial read finished, %d bytes remaining\n"), ide->num, ide->data_size);
-		if (ide->data_size == 0) {
+			if (ide->data_size == 0) {
 				ide->packet_state = 0;
 				atapi_data_done (ide);
-			if (IDE_LOG > 1)
+				if (IDE_LOG > 1)
 					write_log (_T("IDE%d ATAPI read finished, %d bytes\n"), ide->num, ide->packet_data_offset + ide->data_offset);
-			irq = true;
-		} else {
+				irq = true;
+			} else {
 				process_packet_command (ide);
 			}
 		}
@@ -1220,7 +1234,7 @@ static uae_u32 ide_read_reg (struct ide_hdf *ide, int ide_reg)
 		if (isdrv) {
 			if (ide->regs.ide_devcon & 0x80)
 				v = ide->regs.ide_nsector2;
-		else
+			else
 				v = ide->regs.ide_nsector;
 		}
 		break;
@@ -1228,7 +1242,7 @@ static uae_u32 ide_read_reg (struct ide_hdf *ide, int ide_reg)
 		if (isdrv) {
 			if (ide->regs.ide_devcon & 0x80)
 				v = ide->regs.ide_sector2;
-		else
+			else
 				v = ide->regs.ide_sector;
 			check_maxtransfer (ide, 2);
 		}
@@ -1237,7 +1251,7 @@ static uae_u32 ide_read_reg (struct ide_hdf *ide, int ide_reg)
 		if (isdrv) {
 			if (ide->regs.ide_devcon & 0x80)
 				v = ide->regs.ide_lcyl2;
-		else
+			else
 				v = ide->regs.ide_lcyl;
 		}
 		break;
@@ -1245,7 +1259,7 @@ static uae_u32 ide_read_reg (struct ide_hdf *ide, int ide_reg)
 		if (isdrv) {
 			if (ide->regs.ide_devcon & 0x80)
 				v = ide->regs.ide_hcyl2;
-		else
+			else
 				v = ide->regs.ide_hcyl;
 		}
 		break;
@@ -1263,7 +1277,7 @@ static uae_u32 ide_read_reg (struct ide_hdf *ide, int ide_reg)
 		} else {
 			v = ide->regs.ide_status;
 			if (!ide->atapi || (ide->atapi && ide->atapi_drdy))
-			v |= IDE_STATUS_DRDY | IDE_STATUS_DSC;
+				v |= IDE_STATUS_DRDY | IDE_STATUS_DSC;
 		}
 		break;
 	}
@@ -1277,7 +1291,7 @@ static void ide_write_reg (struct ide_hdf *ide, int ide_reg, uae_u32 val)
 {
 	if (!ide)
 		return;
-	
+
 	ide->regs1->ide_devcon &= ~0x80; /* clear HOB */
 	ide->regs0->ide_devcon &= ~0x80; /* clear HOB */
 	if (IDE_LOG > 2 && ide_reg > 0 && (1 || ide->num > 0))
@@ -1510,22 +1524,41 @@ addrbank gayle_bank = {
 	dummy_lgeti, dummy_wgeti, ABFLAG_IO
 };
 
-static int isa4000t (uaecptr addr)
+static bool isa4000t (uaecptr *paddr)
 {
 	if (currprefs.cs_mbdmac != 2)
-		return 0;
+		return false;
+	uaecptr addr = *paddr;
 	if ((addr & 0xffff) >= (GAYLE_BASE_4000 & 0xffff))
-		return 0;
-	return 1;
+		return false;
+	addr &= 0xff;
+	*paddr = addr;
+	return true;
 }
 
 static uae_u32 REGPARAM2 gayle_lget (uaecptr addr)
 {
 	struct ide_hdf *ide = NULL;
 	int ide_reg;
-	uae_u32 v;
+	uae_u32 v = 0;
 #ifdef JIT
 	special_mem |= S_READ;
+#endif
+#ifdef NCR
+	if (currprefs.cs_mbdmac == 2 && (addr & 0xffff) == 0x3000)
+		return 0xffffffff; // NCR DIP BANK
+	if (isa4000t (&addr)) {
+		if (addr >= NCR_ALT_OFFSET) {
+			addr &= NCR_MASK;
+			v = (ncr_io_bget (addr + 3) << 0) | (ncr_io_bget (addr + 2) << 8) |
+				(ncr_io_bget (addr + 1) << 16) | (ncr_io_bget (addr + 0) << 24);
+		} else if (addr >= NCR_OFFSET) {
+			addr &= NCR_MASK;
+			v = (ncr_io_bget (addr + 3) << 0) | (ncr_io_bget (addr + 2) << 8) |
+				(ncr_io_bget (addr + 1) << 16) | (ncr_io_bget (addr + 0) << 24);
+		}
+		return v;
+	}
 #endif
 	ide_reg = get_gayle_ide_reg (addr, &ide);
 	if (ide_reg == IDE_DATA) {
@@ -1541,14 +1574,21 @@ static uae_u32 REGPARAM2 gayle_wget (uaecptr addr)
 {
 	struct ide_hdf *ide = NULL;
 	int ide_reg;
-	uae_u16 v;
+	uae_u16 v = 0;
 #ifdef JIT
 	special_mem |= S_READ;
 #endif
-	if (isa4000t (addr)) {
-		addr -= NCR_OFFSET;
-		return (ncr_bget2 (addr) << 8) | ncr_bget2 (addr + 1);
+#ifdef NCR
+	if (currprefs.cs_mbdmac == 2 && (addr & (0xffff - 1)) == 0x3000)
+		return 0xffff; // NCR DIP BANK
+	if (isa4000t (&addr)) {
+		if (addr >= NCR_OFFSET) {
+			addr &= NCR_MASK;
+			v = (ncr_io_bget (addr) << 8) | ncr_io_bget (addr + 1);
+		}
+		return v;
 	}
+#endif
 	ide_reg = get_gayle_ide_reg (addr, &ide);
 	if (ide_reg == IDE_DATA)
 		return ide_get_data (ide);
@@ -1561,10 +1601,17 @@ static uae_u32 REGPARAM2 gayle_bget (uaecptr addr)
 #ifdef JIT
 	special_mem |= S_READ;
 #endif
-	if (isa4000t (addr)) {
-		addr -= NCR_OFFSET;
-		return ncr_bget2 (addr);
+#ifdef NCR
+	if (currprefs.cs_mbdmac == 2 && (addr & (0xffff - 3)) == 0x3000)
+		return 0xff; // NCR DIP BANK
+	if (isa4000t (&addr)) {
+		if (addr >= NCR_OFFSET) {
+			addr &= NCR_MASK;
+			return ncr_io_bget (addr);
+		}
+		return 0;
 	}
+#endif
 	return gayle_read (addr);
 }
 
@@ -1575,6 +1622,22 @@ static void REGPARAM2 gayle_lput (uaecptr addr, uae_u32 value)
 #ifdef JIT
 	special_mem |= S_WRITE;
 #endif
+	if (isa4000t (&addr)) {
+		if (addr >= NCR_ALT_OFFSET) {
+			addr &= NCR_MASK;
+			ncr_io_bput (addr + 3, value >> 0);
+			ncr_io_bput (addr + 2, value >> 8);
+			ncr_io_bput (addr + 1, value >> 16);
+			ncr_io_bput (addr + 0, value >> 24);
+		} else if (addr >= NCR_OFFSET) {
+			addr &= NCR_MASK;
+			ncr_io_bput (addr + 3, value >> 0);
+			ncr_io_bput (addr + 2, value >> 8);
+			ncr_io_bput (addr + 1, value >> 16);
+			ncr_io_bput (addr + 0, value >> 24);
+		}
+		return;
+	}
 	ide_reg = get_gayle_ide_reg (addr, &ide);
 	if (ide_reg == IDE_DATA) {
 		ide_put_data (ide, value >> 16);
@@ -1591,12 +1654,16 @@ static void REGPARAM2 gayle_wput (uaecptr addr, uae_u32 value)
 #ifdef JIT
 	special_mem |= S_WRITE;
 #endif
-	if (isa4000t (addr)) {
-		addr -= NCR_OFFSET;
-		ncr_bput2 (addr, value >> 8);
-		ncr_bput2 (addr + 1, value);
+#ifdef NCR
+	if (isa4000t (&addr)) {
+		if (addr >= NCR_OFFSET) {
+			addr &= NCR_MASK;
+			ncr_io_bput (addr, value >> 8);
+			ncr_io_bput (addr + 1, value);
+		}
 		return;
 	}
+#endif
 	ide_reg = get_gayle_ide_reg (addr, &ide);
 	if (ide_reg == IDE_DATA) {
 		ide_put_data (ide, value);
@@ -1611,11 +1678,15 @@ static void REGPARAM2 gayle_bput (uaecptr addr, uae_u32 value)
 #ifdef JIT
 	special_mem |= S_WRITE;
 #endif
-	if (isa4000t (addr)) {
-		addr -= NCR_OFFSET;
-		ncr_bput2 (addr, value);
+#ifdef NCR
+	if (isa4000t (&addr)) {
+		if (addr >= NCR_OFFSET) {
+			addr &= NCR_MASK;
+			ncr_io_bput (addr, value);
+		}
 		return;
 	}
+#endif
 	gayle_write (addr, value);
 }
 
@@ -1709,16 +1780,22 @@ static void REGPARAM2 gayle2_bput (uaecptr addr, uae_u32 value)
 }
 
 static uae_u8 ramsey_config;
-static int gary_coldboot, gary_toenb, gary_timeout;
 static int garyidoffset;
+static int gary_coldboot;
+int gary_timeout;
+int gary_toenb;
 
 static void mbres_write (uaecptr addr, uae_u32 val, int size)
 {
-	addr &= 0xffff;
+	if ((addr & 0xffff) >= 0x8000) {
+		dummy_put(addr, size, val);
+		return;
+	}
 
+	addr &= 0xffff;
 	if (MBRES_LOG > 0)
 		write_log (_T("MBRES_WRITE %08X=%08X (%d) PC=%08X S=%d\n"), addr, val, size, M68K_GETPC, regs.s);
-	if (1 || regs.s) { /* CPU FC = supervisor only */
+	if (addr < 0x8000 && (1 || regs.s)) { /* CPU FC = supervisor only */
 		uae_u32 addr2 = addr & 3;
 		uae_u32 addr64 = (addr >> 6) & 3;
 		if (addr == 0x1002)
@@ -1737,6 +1814,10 @@ static void mbres_write (uaecptr addr, uae_u32 val, int size)
 static uae_u32 mbres_read (uaecptr addr, int size)
 {
 	uae_u32 v = 0;
+
+	if ((addr & 0xffff) >= 0x8000)
+		return dummy_get(addr, size, false);
+
 	addr &= 0xffff;
 
 	if (1 || regs.s) { /* CPU FC = supervisor only (only newest ramsey/gary? never implemented?) */
@@ -2042,10 +2123,10 @@ static void gayle_attr_write (uaecptr addr, uae_u32 v)
 							write_log (_T("WARNING: Only config index 1 and 2 emulated, attempted to select %d!\n"), index);
 						} else {
 							pcmcia_configured = index;
-						write_log (_T("PCMCIA IO configured = %02x\n"), v);
+							write_log (_T("PCMCIA IO configured = %02x\n"), v);
+						}
 					}
 				}
-			}
 			}
 			if (pcmcia_configured >= 0) {
 				int reg = get_pcmcmia_ide_reg (addr, 1, &ide);
@@ -2061,8 +2142,8 @@ static void gayle_attr_write (uaecptr addr, uae_u32 v)
 						return;
 					}
 					ide_write_reg (ide, reg, v);
-	}
-}
+				}
+			 }
 		 }
 	}
 }
@@ -2275,7 +2356,7 @@ static int freepcmcia (int reset)
 	}
 	if (pcmcia_card)
 		gayle_cs_change (GAYLE_CS_CCDET, 0);
-	
+
 	pcmcia_reset ();
 	pcmcia_card = 0;
 
@@ -2320,22 +2401,22 @@ static int initpcmcia (const TCHAR *path, int readonly, int type, int reset)
 		pcmcia_attrs = xcalloc (uae_u8, pcmcia_attrs_size);
 		pcmcia_type = type;
 
-	if (!pcmcia_sram->hfd.drive_empty) {
-		pcmcia_common_size = pcmcia_sram->hfd.virtsize;
-		if (pcmcia_sram->hfd.virtsize > 4 * 1024 * 1024) {
-				write_log (_T("PCMCIA SRAM: too large device, %d bytes\n"), pcmcia_sram->hfd.virtsize);
-			pcmcia_common_size = 4 * 1024 * 1024;
-		}
-		pcmcia_common = xcalloc (uae_u8, pcmcia_common_size);
+		if (!pcmcia_sram->hfd.drive_empty) {
+			pcmcia_common_size = pcmcia_sram->hfd.virtsize;
+			if (pcmcia_sram->hfd.virtsize > 4 * 1024 * 1024) {
+				write_log (_T("PCMCIA SRAM: too large device, %llu bytes\n"), pcmcia_sram->hfd.virtsize);
+				pcmcia_common_size = 4 * 1024 * 1024;
+			}
+			pcmcia_common = xcalloc (uae_u8, pcmcia_common_size);
 			write_log (_T("PCMCIA SRAM: '%s' open, size=%d\n"), path, pcmcia_common_size);
-		hdf_read (&pcmcia_sram->hfd, pcmcia_common, 0, pcmcia_common_size);
-		pcmcia_card = 1;
-		initsramattr (pcmcia_common_size, readonly);
-		if (!(gayle_cs & GAYLE_CS_DIS)) {
-			gayle_map_pcmcia ();
-			card_trigger (1);
+			hdf_read (&pcmcia_sram->hfd, pcmcia_common, 0, pcmcia_common_size);
+			pcmcia_card = 1;
+			initsramattr (pcmcia_common_size, readonly);
+			if (!(gayle_cs & GAYLE_CS_DIS)) {
+				gayle_map_pcmcia ();
+				card_trigger (1);
+			}
 		}
-	}
 	} else if (type == PCMCIA_IDE) {
 
 		if (reset) {
@@ -2750,10 +2831,13 @@ void gayle_reset (int hardreset)
 	_tcscpy (bankname, _T("Gayle (low)"));
 	if (currprefs.cs_ide == IDE_A4000)
 		_tcscpy (bankname, _T("A4000 IDE"));
+#ifdef NCR
 	if (currprefs.cs_mbdmac == 2) {
 		_tcscat (bankname, _T(" + NCR53C710 SCSI"));
+		ncr_init ();
 		ncr_reset ();
 	}
+#endif
 	gayle_bank.name = bankname;
 }
 

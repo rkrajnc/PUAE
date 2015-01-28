@@ -1,6 +1,3 @@
-#pragma once
-#ifndef SRC_INCLUDE_PICASSO96_H_INCLUDED
-#define SRC_INCLUDE_PICASSO96_H_INCLUDED 1
 /*
  * UAE - The U*nix Amiga Emulator
  *
@@ -8,6 +5,10 @@
  *
  * Copyright 1997 Brian King <Brian_King@Mitel.com, Brian_King@Cloanto.com>
  */
+
+#pragma once
+#ifndef PICASSO96_H
+#define PICASSO96_H
 
 #if defined PICASSO96_SUPPORTED
 
@@ -790,4 +791,4 @@ extern int p96hsync_counter;
 
 #endif
 
-#endif // SRC_INCLUDE_PICASSO96_H_INCLUDED
+#endif // PICASSO96_H

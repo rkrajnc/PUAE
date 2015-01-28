@@ -3,7 +3,7 @@
  *
  * lowlevel cd device glue, scsi emulator
  *
-* Copyright 2009-2013 Toni Wilen
+ * Copyright 2009-2013 Toni Wilen
  *
  */
 
@@ -141,6 +141,9 @@ extern struct device_functions devicefunc_cdimage;
 static struct device_functions *devicetable[] = {
 	NULL,
 	&devicefunc_cdimage,
+//devicefunc_scsi_amiga,
+//devicefunc_scsi_linux_ioctl,
+//devicefunc_scsi_libscg,
 	NULL
 };
 static int driver_installed[6];
@@ -171,9 +174,9 @@ static void install_driver (int flags)
 				st->device_func = devicetable[SCSI_UNIT_IOCTL];
 				st->scsiemu = true;
 				break;
-				case SCSI_UNIT_SPTI:
-				st->device_func = devicetable[SCSI_UNIT_SPTI];
-				break;
+				//case SCSI_UNIT_SPTI:
+				//st->device_func = devicetable[SCSI_UNIT_SPTI];
+				//break;
 			}
 		}
 	}
@@ -193,7 +196,7 @@ static void install_driver (int flags)
 	}
 
 }
-/*#else 
+/*#else
 	#ifdef TARGET_AMIGAOS
 extern struct device_functions devicefunc_scsi_amiga;
 static void install_driver (int flags){}
@@ -241,9 +244,9 @@ void blkdev_fix_prefs (struct uae_prefs *p)
 			}
 		} else if (currprefs.scsi) {
 //EMU			if (currprefs.win32_uaescsimode == UAESCSI_CDEMU)
-//				cdscsidevicetype[i] = SCSI_UNIT_IOCTL;
+				cdscsidevicetype[i] = SCSI_UNIT_IOCTL;
 //			else
-				cdscsidevicetype[i] = SCSI_UNIT_SPTI;
+//				cdscsidevicetype[i] = SCSI_UNIT_SPTI;
 		} else {
 			cdscsidevicetype[i] = SCSI_UNIT_IOCTL;
 		}
@@ -391,7 +394,7 @@ static int get_standard_cd_unit2 (struct uae_prefs *p, unsigned int csu)
 	if (isaudio) {
 		TCHAR vol[100];
 		_stprintf (vol, _T("%c:\\"), isaudio);
-		if (sys_command_open_internal (unitnum, vol, csu)) 
+		if (sys_command_open_internal (unitnum, vol, csu))
 			return unitnum;
 	}
 fallback:
@@ -613,7 +616,7 @@ static void check_changes (int unitnum)
 		}
 		write_log (_T("CD: eject (%s) open=%d\n"), pollmode ? _T("slow") : _T("fast"), st->wasopen ? 1 : 0);
 #ifdef RETROPLATFORM
-		rp_cd_image_change (unitnum, NULL); 
+		rp_cd_image_change (unitnum, NULL);
 #endif
 		if (gotsem) {
 			freesem (unitnum);
@@ -1249,7 +1252,7 @@ int scsi_cd_emulate (int unitnum, uae_u8 *cmdbuf, int scsi_cmd_len,
 	struct device_info di;
 	uae_u8 cmd = cmdbuf[0];
 	int dlen;
-	
+
 	if (cmd == 0x03) { /* REQUEST SENSE */
 		st->mediawaschanged = false;
 		return 0;
@@ -1261,8 +1264,8 @@ int scsi_cd_emulate (int unitnum, uae_u8 *cmdbuf, int scsi_cmd_len,
 	sys_command_info (unitnum, &di, 1);
 
 	if (log_scsiemu) {
-		write_log (_T("SCSIEMU %d: %02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X CMDLEN=%d DATA=%08X LEN=%d\n"), unitnum,
-			cmdbuf[0], cmdbuf[1], cmdbuf[2], cmdbuf[3], cmdbuf[4], cmdbuf[5], cmdbuf[6], 
+		write_log (_T("SCSIEMU %d: %02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X CMDLEN=%d DATA=%p LEN=%d\n"), unitnum,
+			cmdbuf[0], cmdbuf[1], cmdbuf[2], cmdbuf[3], cmdbuf[4], cmdbuf[5], cmdbuf[6],
 			cmdbuf[7], cmdbuf[8], cmdbuf[9], cmdbuf[10], cmdbuf[11],
 			scsi_cmd_len, scsi_data, dlen);
 	}
@@ -1270,7 +1273,7 @@ int scsi_cd_emulate (int unitnum, uae_u8 *cmdbuf, int scsi_cmd_len,
 	// media changed and not inquiry
 	if (st->mediawaschanged && cmd != 0x12) {
 		if (log_scsiemu) {
-			write_log (_T("SCSIEMU %d: MEDIUM MAY HAVE CHANGED STATE\n"));
+			write_log (_T("SCSIEMU %d: MEDIUM MAY HAVE CHANGED STATE\n"), unitnum);
 		}
 		lr = -1;
 		status = 2; /* CHECK CONDITION */
@@ -1726,7 +1729,7 @@ int scsi_cd_emulate (int unitnum, uae_u8 *cmdbuf, int scsi_cmd_len,
 						break;
 					strack++;
 				}
-				addtocentry (&p2, &maxlen, 0xa2, 0xaa, msf, p, toc);				
+				addtocentry (&p2, &maxlen, 0xa2, 0xaa, msf, p, toc);
 				int tlen = p2 - (p + 2);
 				p[0] = tlen >> 8;
 				p[1] = tlen >> 0;

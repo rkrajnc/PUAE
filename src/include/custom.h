@@ -11,7 +11,7 @@
 
 #include "machdep/rpt.h"
 #include "options.h"
- 
+
 /* These are the masks that are ORed together in the chipset_mask option.
  * If CSMASK_AGA is set, the ECS bits are guaranteed to be set as well.  */
 #define CSMASK_ECS_AGNUS 1
@@ -89,7 +89,7 @@ extern unsigned int joy0dir, joy1dir;
 extern int joy0button, joy1button;
 
 extern void INTREQ (uae_u16);
-extern void INTREQ_0 (uae_u16);
+extern bool INTREQ_0 (uae_u16);
 extern void INTREQ_f (uae_u16);
 extern void send_interrupt (int num, int delay);
 extern uae_u16 INTREQR (void);
@@ -238,4 +238,4 @@ extern void compute_framesync (void);
 
 #define HSYNCTIME (maxhpos * CYCLE_UNIT);
 
-#endif
+#endif /* CUSTOM_H */

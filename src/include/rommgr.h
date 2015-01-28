@@ -1,5 +1,12 @@
-#ifndef SRC_INCLUDE_ROMMGR_H_INCLUDED
-#define SRC_INCLUDE_ROMMGR_H_INCLUDED 1
+/*
+ * UAE - The Un*x Amiga Emulator
+ *
+ * ROM file management
+ *
+ */
+
+#ifndef ROMMGR_H
+#define ROMMGR_H
 
 extern int decode_cloanto_rom_do (uae_u8 *mem, int size, int real_size);
 
@@ -26,6 +33,7 @@ extern int decode_cloanto_rom_do (uae_u8 *mem, int size, int real_size);
 #define ROMTYPE_BYTESWAP	0x100000
 #define ROMTYPE_CD32		0x200000
 #define ROMTYPE_SCRAMBLED	0x400000
+#define ROMTYPE_NONE		0x800000
 
 #define ROMTYPE_ALL_KICK (ROMTYPE_KICK | ROMTYPE_KICKCD32 | ROMTYPE_CD32)
 #define ROMTYPE_ALL_EXT (ROMTYPE_EXTCD32 | ROMTYPE_EXTCDTV)
@@ -62,7 +70,7 @@ struct romlist {
 };
 
 extern struct romdata *getromdatabypath (const TCHAR *path);
-extern struct romdata *getromdatabycrc (uae_u32 crc32);
+extern struct romdata *getromdatabycrc (uae_u32 crc32, bool);
 extern struct romdata *getromdatabydata (uae_u8 *rom, int size);
 extern struct romdata *getromdatabyid (int id);
 extern struct romdata *getromdatabyidgroup (int id, int group, int subitem);
@@ -78,7 +86,7 @@ extern struct romlist *getromlistbyromdata (const struct romdata *rd);
 extern void romlist_add (const TCHAR *path, struct romdata *rd);
 extern TCHAR *romlist_get (const struct romdata *rd);
 extern void romlist_clear (void);
-extern struct zfile *read_rom (struct romdata **rd);
+extern struct zfile *read_rom (struct romdata *rd);
 extern struct zfile *read_rom_name (const TCHAR *filename);
 
 extern int load_keyring (struct uae_prefs *p, const TCHAR *path);
@@ -97,4 +105,4 @@ extern int romlist_count (void);
 extern struct romlist *romlist_getit (void);
 extern int configure_rom (struct uae_prefs *p, const int *rom, int msg);
 
-#endif /* SRC_INCLUDE_ROMMGR_H_INCLUDED */
+#endif // ROMMGR_H

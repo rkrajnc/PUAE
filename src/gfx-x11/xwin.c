@@ -1690,7 +1690,7 @@ static void unacquire_kb (int num)
 /*
  * Default inputdevice config for X11 mouse
  */
-int input_get_default_mouse (struct uae_input_device *uid, int num, int port, int af, bool gp, bool wheel)
+int input_get_default_mouse (struct uae_input_device *uid, int num, int port, int af, bool gp, bool wheel, bool joymouseswap)
 {
     /* Supports only one mouse */
     uid[0].eventid[ID_AXIS_OFFSET + 0][0]   = INPUTEVENT_MOUSE1_HORIZ;
@@ -1747,7 +1747,7 @@ int target_checkcapslock (int scancode, int *state)
                 *state = SDL_GetModState() & KMOD_NUM;
         if (scancode == DIK_SCROLL)
                 *state = host_scrolllockstate;
-        return 1;  
+        return 1;
         */
         return 0;
 }

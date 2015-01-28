@@ -1,6 +1,6 @@
 #pragma once
-#ifndef SRC_INCLUDE_GAYLE_H_INCLUDED
-#define SRC_INCLUDE_GAYLE_H_INCLUDED 1
+#ifndef GAYLE_H
+#define GAYLE_H
 
 #ifdef GAYLE
 void gayle_reset (int);
@@ -16,7 +16,10 @@ void rethink_gayle (void);
 void gayle_map_pcmcia (void);
 #endif // GAYLE
 
+extern int gary_toenb; // non-existing memory access = bus error.
+extern int gary_timeout; // non-existing memory access = delay
+
 #define PCMCIA_COMMON_START 0x600000
 #define PCMCIA_COMMON_SIZE 0x400000
 
-#endif // SRC_INCLUDE_GAYLE_H_INCLUDED
+#endif // GAYLE_H

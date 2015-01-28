@@ -1,6 +1,3 @@
-#ifndef UAE_SYSDEPS_H
-#define UAE_SYSDEPS_H
-
 /*
   * UAE - The Un*x Amiga Emulator
   *
@@ -14,6 +11,9 @@
   *
   * Copyright 1996, 1997 Bernd Schmidt
   */
+
+#ifndef UAE_SYSDEPS_H
+#define UAE_SYSDEPS_H
 
 #if defined(__cplusplus)
 #include <cstddef>
@@ -89,7 +89,7 @@
 		} \
 	} else \
 		JITLOG("Can't dissassemble %s, start (0x%08lx) is larger than end (0x%08lx)", \
-				#udis_func, (uaecptr)udis_func, (uaecptr)udis_end) \
+				#udis_func, (uaecptr)udis_func, (uaecptr)udis_end); \
 }
 # else
 #   define UDISFN(...) {}
@@ -499,4 +499,4 @@ typedef int64_t off64_t;
 
 DWORD GetLastError(void);
 
-#endif /* UAE_SYSDEPS_H */
+#endif // UAE_SYSDEPS_H

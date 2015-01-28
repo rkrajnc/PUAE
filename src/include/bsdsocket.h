@@ -1,15 +1,15 @@
-#pragma once
-#ifndef SRC_INCLUDE_BSDSOCKET_H_INCLUDED
-#define SRC_INCLUDE_BSDSOCKET_H_INCLUDED 1
+/*
+ * UAE - The Un*x Amiga Emulator
+ *
+ * bsdsocket.library emulation
+ *
+ * Copyright 1997,98 Mathias Ortmann
+ *
+ */
 
- /*
-  * UAE - The Un*x Amiga Emulator
-  *
-  * bsdsocket.library emulation
-  *
-  * Copyright 1997,98 Mathias Ortmann
-  *
-  */
+#pragma once
+#ifndef BSDSOCKET_H
+#define BSDSOCKET_H
 
 #define BSD_TRACING_ENABLED 0
 
@@ -202,4 +202,4 @@ void bsdlib_reset (void);
 
 void bsdsock_fake_int_handler(void);
 
-#endif // SRC_INCLUDE_BSDSOCKET_H_INCLUDED
+#endif // BSDSOCKET_H

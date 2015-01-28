@@ -3,10 +3,19 @@ AM_CPPFLAGS = @UAE_CPPFLAGS@
 AM_CPPFLAGS += -I$(top_srcdir)/src/include -I$(top_builddir)/src -I$(top_srcdir)/src -I$(top_srcdir)
 AM_CXXFLAGS  = @UAE_CXXFLAGS@
 
-LIBS = -L/usr/lib -lstdc++
+LIBS = -lstdc++
+if !TARGET_NACL  # Native Client can only use its own versions of the libraries.
+LIBS += -L/usr/lib
+endif
 if !ANDROID
 LIBS += -lpthread
 endif
+
+if BUILD_MACOSX_BUNDLE
+AM_CFLAGS += -mmacosx-version-min=10.7
+AM_CPPFLAGS += -mmacosx-version-min=10.7
+endif
+
 if IS_QT
 QT_INCPATH = $(shell qmake -query QT_INSTALL_HEADERS)
 QT_INSPATH = $(shell qmake -query QT_INSTALL_DATA)
@@ -19,7 +28,7 @@ AM_CPPFLAGS += -I/System/Library/Frameworks/CarbonCore.framework/Headers
 AM_CPPFLAGS += -F$(QT_INSLIBS)
 AM_CPPFLAGS += -I$(QT_INSLIBS)/QtCore.framework/Versions/4/Headers
 AM_CPPFLAGS += -I$(QT_INSLIBS)/QtGui.framework/Versions/4/Headers
-LIBS += -F$(QT_INSLIBS) -L$(QT_INSLIBS) -framework QtGui -framework QtCore 
+LIBS += -F$(QT_INSLIBS) -L$(QT_INSLIBS) -framework QtGui -framework QtCore
 else
 LIBS += -L$(QT_INSLIBS) -lQtGui -lQtCore
 endif
@@ -32,10 +41,10 @@ SUBDIRS = \
 
 DIST_SUBDIRS = \
 	md-generic md-68k md-i386-gcc md-ppc md-ppc-gcc md-amd64-gcc \
-	gfx-amigaos gfx-beos gfx-x11 gfx-sdl gfx-curses gfx-svga gfx-cocoa \
-	sd-none sd-alsa sd-amigaos sd-beos sd-sdl sd-solaris sd-uss \
-	jd-none jd-amigainput jd-amigaos jd-beos jd-linuxold jd-sdl \
-	gui-none gui-beos gui-cocoa gui-gtk gui-muirexx gui-sdl \
+	gfx-amigaos gfx-beos gfx-x11 gfx-sdl gfx-curses gfx-svga gfx-cocoa gfx-pepper \
+	sd-none sd-alsa sd-amigaos sd-beos sd-sdl sd-solaris sd-uss sd-pepper \
+	jd-none jd-amigainput jd-amigaos jd-beos jd-linuxold jd-sdl jd-pepper \
+	gui-none gui-beos gui-cocoa gui-gtk gui-muirexx gui-sdl gui-html \
 	od-generic od-amiga od-beos od-linux od-macosx \
 	td-none td-amigaos td-beos td-posix td-sdl \
 	keymap caps archivers/dms archivers/zip
@@ -62,8 +71,11 @@ DISTCLEANFILES = \
 	machdep osdep threaddep gfxdep sounddep joydep guidep \
 	target.h md-fpp.h
 
-bin_PROGRAMS  = \
-	uae readdisk make_hdf
+if TARGET_NACL # = Using Native Client/Pepper
+bin_PROGRAMS  = uae
+else
+bin_PROGRAMS  = uae readdisk make_hdf
+endif
 
 if BUILD_MACOSX_BUNDLE
 bundle = @PACKAGE_NAME@.app
@@ -74,7 +86,11 @@ if TARGET_BIGENDIAN
 genlinetoscr_args = -b
 endif
 
-uae_extraLDFLAGS=-fwhole-program
+uae_extraLDFLAGS = -fwhole-program
+
+if BUILD_MACOSX_BUNDLE
+uae_extraLDFLAGS += -Wno-error=unused-command-line-argument-hard-error-in-future -mmacosx-version-min=10.7
+endif
 
 uae$(EXEEXT):	$(uae_OBJECTS) $(uae_DEPENDENCIES)
 		@rm -f uae$(EXEEXT)
@@ -122,7 +138,6 @@ noinst_HEADERS = \
 	include/cia.h		include/cfgfile.h       \
 	include/commpipe.h	include/compemu.h	\
 	include/cpu_prefetch.h  include/custom.h	\
-	include/custom_private.h                        \
 	include/crc32.h		include/consolehook.h	\
 	include/arcadia.h	include/cdtv.h		\
 	include/debug.h		include/disk.h 		\
@@ -169,16 +184,18 @@ EXTRA_DIST = \
 	test/test_optflag.c test/Makefile.in test/Makefile.am
 
 uae_SOURCES = \
-	main.c newcpu.c memory.c rommgr.c custom.c serial.c dongle.c cia.c \
+	main.c newcpu.c newcpu_common.c memory.c rommgr.c custom.c serial.c dongle.c cia.c \
 	blitter.c autoconf.c traps.c keybuf.c expansion.c inputrecord.c \
 	diskutil.c zfile.c zfile_archive.c cfgfile.c picasso96.c inputdevice.c \
 	gfxutil.c audio.c sinctable.c statusline.c drawing.c consolehook.c \
 	native2amiga.c disk.c crc32.c savestate.c arcadia.c cdtv.c cd32_fmv.c \
 	uaeexe.c uaelib.c uaeresource.c uaeserial.c fdi2raw.c hotkeys.c amax.c \
 	ar.c driveclick.c enforcer.c misc.c uaenet.c a2065.c gayle.c blkdev.c blkdev_cdimage.c scsi.c ncr_scsi.c \
-	missing.c readcpu.c hrtmon.rom.c events.c calc.c aros.rom.c \
-	specialmonitors.c gfxboard.c qemuvga/cirrus_vga.c qemuvga/qemuuaeglue.c qemuvga/vga.c \
-	sana2.c
+	missing.c readcpu.c hrtmon.rom.c events.c calc.c sana2.c scp.c \
+	specialmonitors.c gfxboard.c qemuvga/cirrus_vga.c qemuvga/qemuuaeglue.c qemuvga/vga.c qemuvga/lsi53c895a.c
+if !TARGET_NACL  # Do not include AROS ROM in Native Client.
+uae_SOURCES += aros.rom.c
+endif
 
 EXTRA_uae_SOURCES = \
 	bsdsocket.c bsdsocket-posix-new.c build68k.c catweasel.c cdrom.c \

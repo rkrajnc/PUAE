@@ -13,7 +13,7 @@
 #define MEMLOGINDIRECT 0
 #define MEMDEBUG 0
 #define MEMDEBUGMASK 0x7fffff
-#define MEMDEBUGTEST 0x280000
+#define MEMDEBUGTEST 0x1ff000
 #define PICASSOIV_DEBUG_IO 0
 
 #define BYTESWAP_WORD -1
@@ -33,11 +33,11 @@
 #include "zfile.h"
 #include "gfxboard.h"
 
-static bool memlogr = false;
-static bool memlogw = false;
-
 #include "qemuvga/qemuuaeglue.h"
 #include "qemuvga/vga.h"
+
+static bool memlogr = false;
+static bool memlogw = false;
 
 #define GFXBOARD_AUTOCONFIG_SIZE 131072
 
@@ -100,6 +100,9 @@ struct gfxboard
 #define PICASSOIV_Z3 11
 
 #define ISP4() (currprefs.rtgmem_type == PICASSOIV_Z2 || currprefs.rtgmem_type == PICASSOIV_Z3)
+
+// Picasso II: 8* 4x256 (1M) or 16* 4x256 (2M)
+// Piccolo: 8* 4x256 + 2* 16x256 (2M)
 
 static struct gfxboard boards[] =
 {
@@ -493,12 +496,14 @@ void memory_region_set_enabled(MemoryRegion *mr, bool enabled)
 void memory_region_reset_dirty(MemoryRegion *mr, hwaddr addr,
                                hwaddr size, unsigned client)
 {
+	//write_log (_T("memory_region_reset_dirty %08x %08x\n"), addr, size);
 }
 bool memory_region_get_dirty(MemoryRegion *mr, hwaddr addr,
                              hwaddr size, unsigned client)
 {
 	if (mr->opaque != &vgavramregionptr)
 		return false;
+	//write_log (_T("memory_region_get_dirty %08x %08x\n"), addr, size);
 	if (fullrefresh)
 		return true;
 	return picasso_is_vram_dirty (addr + gfxmem_bank.start, size);
@@ -1527,7 +1532,7 @@ void gfxboard_reset (void)
 	if (board) {
 		if (board->z3)
 			gfxboard_bank_memory.wput = gfxboard_wput_mem_autoconfig;
-		if (reset_func) 
+		if (reset_func)
 			reset_func (reset_parm);
 	}
 }
@@ -1918,6 +1923,7 @@ addrbank gfxboard_bank_special = {
 	default_xlate, default_check, NULL, _T("Picasso IV MISC"),
 	dummy_lgeti, dummy_wgeti, ABFLAG_IO | ABFLAG_SAFE
 };
+
 bool gfxboard_is_z3 (int type)
 {
 	if (type == GFXBOARD_UAE_Z2)
@@ -1930,7 +1936,7 @@ bool gfxboard_is_z3 (int type)
 
 bool gfxboard_need_byteswap (int type)
 {
-	if (type < 2)
+	if (type < GFXBOARD_HARDWARE)
 		return false;
 	board = &boards[type - 2];
 	return board->swap;
@@ -1938,7 +1944,7 @@ bool gfxboard_need_byteswap (int type)
 
 int gfxboard_get_vram_min (int type)
 {
-	if (type < 2)
+	if (type < GFXBOARD_HARDWARE)
 		return -1;
 	board = &boards[type - 2];
 	//return board->vrammax;
@@ -1947,7 +1953,7 @@ int gfxboard_get_vram_min (int type)
 
 int gfxboard_get_vram_max (int type)
 {
-	if (type < 2)
+	if (type < GFXBOARD_HARDWARE)
 		return -1;
 	board = &boards[type - 2];
 	return board->vrammax;
@@ -1955,7 +1961,7 @@ int gfxboard_get_vram_max (int type)
 
 bool gfxboard_is_registers (int type)
 {
-	if (type < 2)
+	if (type < GFXBOARD_HARDWARE)
 		return false;
 	board = &boards[type - 2];
 	return board->model_registers != 0;
@@ -1963,7 +1969,7 @@ bool gfxboard_is_registers (int type)
 
 int gfxboard_num_boards (int type)
 {
-	if (type < 2)
+	if (type < GFXBOARD_HARDWARE)
 		return 1;
 	board = &boards[type - 2];
 	if (type == PICASSOIV_Z2)
@@ -2043,7 +2049,7 @@ void gfxboard_init_memory (void)
 	gfxboard_init ();
 
 	memset (automemory, 0xff, GFXBOARD_AUTOCONFIG_SIZE);
-	
+
 	z2_flags = 0x05; // 1M
 	z3_flags = 0x06; // 1M
 	bank = board->banksize;

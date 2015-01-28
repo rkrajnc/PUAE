@@ -4,6 +4,7 @@
 
 #define MMUDEBUG 0
 #define MMUINSDEBUG 0
+#define MMUDEBUGMISC 0
 
 #define unlikely(x) x
 #define likely(x) x
@@ -55,13 +56,13 @@ typedef  int m68k_exception;
 #define MMU_FSLW_LK		0x02000000
 #define MMU_FSLW_R		0x01000000
 #define MMU_FSLW_W		0x00800000
-#define MMU_FSLW_SIZE_L		0x00000000 /* Note: wrong in mc68060 manual! */
-#define MMU_FSLW_SIZE_B		0x00200000
-#define MMU_FSLW_SIZE_W		0x00400000
-#define MMU_FSLW_SIZE_D		0x00600000
+#define MMU_FSLW_SIZE_L	0x00000000 /* Note: wrong in mc68060 manual! */
+#define MMU_FSLW_SIZE_B	0x00200000
+#define MMU_FSLW_SIZE_W	0x00400000
+#define MMU_FSLW_SIZE_D	0x00600000
 #define MMU_FSLW_TT		0x00180000
-#define MMU_FSLW_TT_N		0x00000000 /* Normal access */
-#define MMU_FSLW_TT_16		0x00080000 /* MOVE16 */
+#define MMU_FSLW_TT_N	0x00000000 /* Normal access */
+#define MMU_FSLW_TT_16	0x00080000 /* MOVE16 */
 #define MMU_FSLW_TM		0x00070000 /* = function code */
 #define MMU_FSLW_IO		0x00008000
 #define MMU_FSLW_PBE		0x00004000
@@ -84,9 +85,10 @@ typedef  int m68k_exception;
 #define MMU_SSW_TT1		0x0010
 #define MMU_SSW_TT0		0x0008
 #define MMU_SSW_SIZE		0x0060
-#define MMU_SSW_SIZE_B		0x0020
-#define MMU_SSW_SIZE_W		0x0040
-#define MMU_SSW_SIZE_L		0x0000
+#define MMU_SSW_SIZE_B	0x0020
+#define MMU_SSW_SIZE_W	0x0040
+#define MMU_SSW_SIZE_L	0x0000
+#define MMU_SSW_SIZE_CL	0x0060
 #define MMU_SSW_RW		0x0100
 #define MMU_SSW_LK		0x0200
 #define MMU_SSW_ATC		0x0400
@@ -113,7 +115,7 @@ typedef  int m68k_exception;
 #define ALWAYS_INLINE __inline
 
 // take care of 2 kinds of alignement, bus size and page
-static inline bool is_unaligned(uaecptr addr, int size)
+static ALWAYS_INLINE bool is_unaligned(uaecptr addr, int size)
 {
     return unlikely((addr & (size - 1)) && (addr ^ (addr + size - 1)) & regs.mmu_page_size);
 }

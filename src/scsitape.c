@@ -20,6 +20,9 @@
 #include "fsdb.h"
 #include "misc.h"
 
+/* external prototypes */
+void my_trim (TCHAR *s);
+
 int log_tapeemu = 1;
 
 #define TAPE_INDEX _T("index.tape")
@@ -73,8 +76,7 @@ static void tape_init (int unit, struct scsi_data_tape *tape, const TCHAR *tape_
 	if (my_existsdir (tape->tape_dir)) {
 		tape->realdir = true;
 	} else {
-		tape->zd = zfile_opendir_archive (tape_directory);
-		//tape->zd = zfile_opendir_archive (tape_directory, ZFD_ARCHIVE | ZFD_NORECURSE);
+		tape->zd = zfile_opendir_archive_flags (tape_directory, ZFD_ARCHIVE | ZFD_NORECURSE);
 		if (!tape->zd)
 			tape->nomedia = true;
 	}
@@ -91,7 +93,7 @@ static void tape_init (int unit, struct scsi_data_tape *tape, const TCHAR *tape_
 struct scsi_data_tape *tape_alloc (int unitnum, const TCHAR *tape_directory, bool readonly)
 {
 	struct scsi_data_tape *tape = xcalloc (struct scsi_data_tape, 1);
-	
+
 	tape_init (unitnum, tape, tape_directory, readonly);
 	return tape;
 }
@@ -382,7 +384,7 @@ int scsi_tape_emulate (struct scsi_data_tape *tape, uae_u8 *cmdbuf, int scsi_cmd
 	case 0x10: /* WRITE FILEMARK */
 		len = rl (cmdbuf + 1) & 0xffffff;
 		if (log_tapeemu)
-			write_log (_T("TAPEEMU WRITE FILEMARK %d\n"), len);
+			write_log (_T("TAPEEMU WRITE FILEMARK %lld\n"), len);
 		if (notape (tape))
 			goto notape;
 		if (tape->unloaded)
@@ -401,7 +403,7 @@ int scsi_tape_emulate (struct scsi_data_tape *tape, uae_u8 *cmdbuf, int scsi_cmd
 		if (cmdbuf[1] & 1)
 			len *= tape->blocksize;
 		if (log_tapeemu)
-			write_log (_T("TAPEEMU WRITE %d (%d, %d)\n"), len, rl (cmdbuf + 1) & 0xffffff, cmdbuf[1] & 1);
+			write_log (_T("TAPEEMU WRITE %lld (%d, %d)\n"), len, rl (cmdbuf + 1) & 0xffffff, cmdbuf[1] & 1);
 		if (notape (tape))
 			goto notape;
 		if (tape->unloaded)
@@ -420,7 +422,7 @@ int scsi_tape_emulate (struct scsi_data_tape *tape, uae_u8 *cmdbuf, int scsi_cmd
 		if (cmdbuf[1] & 1)
 			len *= tape->blocksize;
 		if (log_tapeemu)
-			write_log (_T("TAPEEMU READ %d (%d, %d)\n"), len, rl (cmdbuf + 1) & 0xffffff, cmdbuf[1] & 1);
+			write_log (_T("TAPEEMU READ %lld (%d, %d)\n"), len, rl (cmdbuf + 1) & 0xffffff, cmdbuf[1] & 1);
 		if (notape (tape))
 			goto notape;
 		if (tape->unloaded)
@@ -461,7 +463,7 @@ int scsi_tape_emulate (struct scsi_data_tape *tape, uae_u8 *cmdbuf, int scsi_cmd
 			s[13] = 1; /* File Mark detected */
 			ls = 0x12;
 			if (log_tapeemu)
-				write_log (_T("TAPEEMU READ FILE END, %d remaining\n"), len - scsi_len);
+				write_log (_T("TAPEEMU READ FILE END, %lld remaining\n"), len - scsi_len);
 		}
 	break;
 

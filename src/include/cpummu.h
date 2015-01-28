@@ -2,7 +2,7 @@
  * cpummu.h - MMU emulation
  *
  * Copyright (c) 2001-2004 Milan Jurik of ARAnyM dev team (see AUTHORS)
- * 
+ *
  * Inspired by UAE MMU patch
  *
  * This file is part of the ARAnyM project which builds a new and powerful
@@ -47,6 +47,7 @@ extern int mmu060_state;
 
 extern int mmu040_movem;
 extern uaecptr mmu040_movem_ea;
+extern uae_u32 mmu040_move16[4];
 
 extern bool mmu_pagesize_8k;
 extern uae_u16 mmu_opcode;
@@ -189,6 +190,9 @@ extern uae_u32 mmu_is_super;
 extern uae_u32 mmu_tagmask, mmu_pagemask;
 extern struct mmu_atc_line mmu_atc_array[ATC_TYPE][ATC_WAYS][ATC_SLOTS];
 
+/* Last matched ATC index, next lookup starts from this index as an optimization */
+extern int mmu_atc_ways;
+
 /*
  * mmu access is a 4 step process:
  * if mmu is not enabled just read physical
@@ -199,7 +203,7 @@ extern struct mmu_atc_line mmu_atc_array[ATC_TYPE][ATC_WAYS][ATC_SLOTS];
 static ALWAYS_INLINE bool mmu_lookup(uaecptr addr, bool data, bool write,
 									  struct mmu_atc_line **cl)
 {
-	int way,index;
+	int way, i, index;
 	static int way_miss=0;
 
 	uae_u32 tag = (mmu_is_super | (addr >> 1)) & mmu_tagmask;
@@ -207,15 +211,18 @@ static ALWAYS_INLINE bool mmu_lookup(uaecptr addr, bool data, bool write,
 		index=(addr & 0x0001E000)>>13;
 	else
 		index=(addr & 0x0000F000)>>12;
-	for (way=0;way<ATC_WAYS;way++) {
-		// if we have this 
+	for (i = 0; i < ATC_WAYS; i++) {
+		way = mmu_atc_ways;
+		// if we have this
 		if ((tag == mmu_atc_array[data][way][index].tag) && (mmu_atc_array[data][way][index].valid)) {
 			*cl=&mmu_atc_array[data][way][index];
 			// if first write to this take slow path (but modify this slot)
 			if ((!mmu_atc_array[data][way][index].modified & write) || (mmu_atc_array[data][way][index].write_protect & write))
-				return false; 
+				return false;
 			return true;
 		}
+		mmu_atc_ways++;
+		mmu_atc_ways %= ATC_WAYS;
 	}
 	// we select a random way to void
 	*cl=&mmu_atc_array[data][way_miss%ATC_WAYS][index];
@@ -229,7 +236,7 @@ static ALWAYS_INLINE bool mmu_lookup(uaecptr addr, bool data, bool write,
 static ALWAYS_INLINE bool mmu_user_lookup(uaecptr addr, bool super, bool data,
 										   bool write, struct mmu_atc_line **cl)
 {
-	int way,index;
+	int way, i, index;
 	static int way_miss=0;
 
 	uae_u32 tag = ((super ? 0x80000000 : 0x00000000) | (addr >> 1)) & mmu_tagmask;
@@ -237,15 +244,18 @@ static ALWAYS_INLINE bool mmu_user_lookup(uaecptr addr, bool super, bool data,
 		index=(addr & 0x0001E000)>>13;
 	else
 		index=(addr & 0x0000F000)>>12;
-	for (way=0;way<ATC_WAYS;way++) {
-		// if we have this 
+	for (i = 0; i < ATC_WAYS; i++) {
+		way = mmu_atc_ways;
+		// if we have this
 		if ((tag == mmu_atc_array[data][way][index].tag) && (mmu_atc_array[data][way][index].valid)) {
 			*cl=&mmu_atc_array[data][way][index];
 			// if first write to this take slow path (but modify this slot)
 			if ((!mmu_atc_array[data][way][index].modified & write) || (mmu_atc_array[data][way][index].write_protect & write))
-				return false; 
+				return false;
 			return true;
 		}
+		mmu_atc_ways++;
+		mmu_atc_ways %= ATC_WAYS;
 	}
 	// we select a random way to void
 	*cl=&mmu_atc_array[data][way_miss%ATC_WAYS][index];
@@ -336,6 +346,7 @@ extern void mmu_make_transparent_region(uaecptr baseaddr, uae_u32 size, int data
 #define FC_INST		(regs.s ? 6 : 2)
 
 extern uaecptr REGPARAM3 mmu_translate(uaecptr addr, bool super, bool data, bool write) REGPARAM;
+extern void mmu_bus_error(uaecptr addr, int fc, bool write, int size, bool rmw, uae_u32 status);
 
 extern uae_u32 REGPARAM3 sfc_get_long(uaecptr addr) REGPARAM;
 extern uae_u16 REGPARAM3 sfc_get_word(uaecptr addr) REGPARAM;
@@ -374,20 +385,8 @@ static ALWAYS_INLINE uaecptr mmu_get_real_address(uaecptr addr, struct mmu_atc_l
     return cl->phys | (addr & mmu_pagemask);
 }
 
-static ALWAYS_INLINE void mmu_get_move16(uaecptr addr, uae_u32 *v, bool data, int size)
-{
-	struct mmu_atc_line *cl;
-	for (int i = 0; i < 4; i++) {
-		uaecptr addr2 = addr + i * 4;
-		//                                       addr,super,data
-		if ((!regs.mmu_enabled) || (mmu_match_ttr(addr2,regs.s != 0,data,false)!=TTR_NO_MATCH))
-			v[i] = phys_get_long(addr2);
-		else if (likely(mmu_lookup(addr2, data, false, &cl)))
-			v[i] = phys_get_long(mmu_get_real_address(addr2, cl));
-		else
-			v[i] = mmu_get_long_slow(addr2, regs.s != 0, data, size, false, cl);
-	}
-}
+extern void mmu_get_move16(uaecptr addr, uae_u32 *v, bool data, int size);
+extern void mmu_put_move16(uaecptr addr, uae_u32 *val, bool data, int size);
 
 static ALWAYS_INLINE uae_u32 mmu_get_long(uaecptr addr, bool data, int size, bool rmw)
 {
@@ -438,21 +437,6 @@ static ALWAYS_INLINE void mmu_put_long(uaecptr addr, uae_u32 val, bool data, int
 		phys_put_long(mmu_get_real_address(addr, cl), val);
 	else
 		mmu_put_long_slow(addr, val, regs.s != 0, data, size, rmw, cl);
-}
-
-static ALWAYS_INLINE void mmu_put_move16(uaecptr addr, uae_u32 *val, bool data, int size)
-{
-	struct mmu_atc_line *cl;
-	for (int i = 0; i < 4; i++) {
-		uaecptr addr2 = addr + i * 4;
-		//                                        addr,super,data
-		if ((!regs.mmu_enabled) || (mmu_match_ttr_write(addr2,regs.s != 0,data,val[i],size,false)==TTR_OK_MATCH))
-			phys_put_long(addr2,val[i]);
-		else if (likely(mmu_lookup(addr2, data, true, &cl)))
-			phys_put_long(mmu_get_real_address(addr2, cl), val[i]);
-		else
-			mmu_put_long_slow(addr2, val[i], regs.s != 0, data, size, false, cl);
-	}
 }
 
 static ALWAYS_INLINE void mmu_put_word(uaecptr addr, uae_u16 val, bool data, int size, bool rmw)
@@ -845,56 +829,56 @@ STATIC_INLINE uae_u32 get_lrmw_long_mmu040 (uaecptr addr)
 
 STATIC_INLINE uae_u32 get_ibyte_mmu040 (int o)
 {
-    uae_u32 pc = m68k_getpc () + o;
+    uae_u32 pc = m68k_getpci () + o;
     return uae_mmu040_get_iword (pc);
 }
 STATIC_INLINE uae_u32 get_iword_mmu040 (int o)
 {
-    uae_u32 pc = m68k_getpc () + o;
+    uae_u32 pc = m68k_getpci () + o;
     return uae_mmu040_get_iword (pc);
 }
 STATIC_INLINE uae_u32 get_ilong_mmu040 (int o)
 {
-    uae_u32 pc = m68k_getpc () + o;
+    uae_u32 pc = m68k_getpci () + o;
     return uae_mmu040_get_ilong (pc);
 }
 STATIC_INLINE uae_u32 next_iword_mmu040 (void)
 {
-    uae_u32 pc = m68k_getpc ();
+    uae_u32 pc = m68k_getpci ();
     m68k_incpci (2);
     return uae_mmu040_get_iword (pc);
 }
 STATIC_INLINE uae_u32 next_ilong_mmu040 (void)
 {
-    uae_u32 pc = m68k_getpc ();
+    uae_u32 pc = m68k_getpci ();
     m68k_incpci (4);
     return uae_mmu040_get_ilong (pc);
 }
 
 STATIC_INLINE uae_u32 get_ibyte_mmu060 (int o)
 {
-    uae_u32 pc = m68k_getpc () + o;
+    uae_u32 pc = m68k_getpci () + o;
     return uae_mmu060_get_iword (pc);
 }
 STATIC_INLINE uae_u32 get_iword_mmu060 (int o)
 {
-    uae_u32 pc = m68k_getpc () + o;
+    uae_u32 pc = m68k_getpci () + o;
     return uae_mmu060_get_iword (pc);
 }
 STATIC_INLINE uae_u32 get_ilong_mmu060 (int o)
 {
-    uae_u32 pc = m68k_getpc () + o;
+    uae_u32 pc = m68k_getpci () + o;
     return uae_mmu060_get_ilong (pc);
 }
 STATIC_INLINE uae_u32 next_iword_mmu060 (void)
 {
-    uae_u32 pc = m68k_getpc ();
+    uae_u32 pc = m68k_getpci ();
     m68k_incpci (2);
     return uae_mmu060_get_iword (pc);
 }
 STATIC_INLINE uae_u32 next_ilong_mmu060 (void)
 {
-    uae_u32 pc = m68k_getpc ();
+    uae_u32 pc = m68k_getpci ();
     m68k_incpci (4);
     return uae_mmu060_get_ilong (pc);
 }

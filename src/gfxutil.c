@@ -160,7 +160,7 @@ static void video_calc_gammatable (void)
 	con = ((float)(currprefs.gfx_contrast + 1000)) / 1000.0f;
 	gam = ((float)(1000 - currprefs.gfx_gamma)) / 1000.0f;
 
-	lf = 64 * currprefs.gfx_filter_blur / 1000;
+	lf = 64 * currprefs.gf[picasso_on].gfx_filter_blur / 1000;
 	hf = 256 - lf * 2;
 
 	for (i = 0; i < (256 * 3); i++) {
@@ -181,7 +181,7 @@ static void video_calc_gammatable (void)
 #if 0
 static uae_u32 limit256 (double v)
 {
-	v = v * (double)(currprefs.gfx_filter_contrast + 1000) / 1000.0 + currprefs.gfx_filter_luminance / 10.0;
+	v = v * (double)(currprefs.gf[picasso_on].gfx_filter_contrast + 1000) / 1000.0 + currprefs.gf[picasso_on].gfx_filter_luminance / 10.0;
 	if (v < 0)
 		v = 0;
 	if (v > 255)
@@ -190,7 +190,7 @@ static uae_u32 limit256 (double v)
 }
 static uae_u32 limit256rb (double v)
 {
-	v *= (double)(currprefs.gfx_filter_saturation + 1000) / 1000.0;
+	v *= (double)(currprefs.gf[picasso_on].gfx_filter_saturation + 1000) / 1000.0;
 	if (v < -128)
 		v = -128;
 	if (v > 127)
@@ -332,7 +332,7 @@ void alloc_colors_rgb (int rw, int gw, int bw, int rs, int gs, int bs, int aw, i
 
 		if (currprefs.gfx_blackerthanblack) {
 			j = i * 15 / 16 + 15;
-		} else {  
+		} else {
 			j = i;
 		}
 		j += 256;
@@ -662,9 +662,9 @@ void setup_greydither_maxcol (int maxcol, allocfunc_type allocfunc)
 	    for (b = 0; b < 16; ++b) {
 			int rgb = (r << 8) | (g << 4) | b;
 			int c,p,q;
-	
+
 			c = (77 * r + 151 * g + 28 * b) / 15; /* c in 0..256 */
-	
+
 			k = maxcol-1;
 			p = (c * k) / 256;
 			q = (c * k) % 256;

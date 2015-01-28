@@ -71,10 +71,6 @@ extern void REGPARAM3 op_unimpl (uae_u16) REGPARAM;
 typedef uae_u8 flagtype;
 
 #ifdef FPUEMU
-/* You can set this to long double to be more accurate. However, the
-   resulting alignment issues will cost a lot of performance in some
-   apps */
-#define USE_LONG_DOUBLE 0
 
 #if USE_LONG_DOUBLE
 typedef long double fptype;
@@ -127,6 +123,16 @@ struct mmufixup
 };
 extern struct mmufixup mmufixup[2];
 
+typedef struct
+{
+	fptype fp;
+#ifdef USE_SOFT_LONG_DOUBLE
+	bool fpx;
+	uae_u32 fpm;
+	uae_u64 fpe;
+#endif
+} fpdata;
+
 struct regstruct
 {
 	uae_u32 regs[16];
@@ -136,7 +142,7 @@ struct regstruct
 	uae_u8 *pc_oldp;
 	uae_u32 instruction_pc;
 
-	uae_u16 irc, ir;
+	uae_u16 irc, ir, db;
 	uae_u32 spcflags;
 	uae_u32 last_prefetch;
 	uae_u32 chipset_latch_rw;
@@ -159,11 +165,15 @@ struct regstruct
 	uae_u32 vbr, sfc, dfc;
 
 #ifdef FPUEMU
-	fptype fp[8];
-	fptype fp_result;
+	fpdata fp[8];
+	fpdata fp_result;
+	uae_u32 fp_result_status;
 	uae_u32 fpcr, fpsr, fpiar;
-	uae_u32 fpsr_highbyte;
 	uae_u32 fpu_state;
+	uae_u32 fpu_exp_state;
+	fpdata exp_src1, exp_src2;
+	uae_u32 exp_pack[3];
+	uae_u16 exp_opcode, exp_extra, exp_type;
 	bool fp_exception;
 #endif
 #ifndef CPUEMU_68000_ONLY
@@ -173,8 +183,9 @@ struct regstruct
 	uae_u32 mmu_fslw;
 	uae_u32 mmu_fault_addr, mmu_effective_addr;
 	uae_u16 mmu_ssw;
+	uae_u32 wb2_address;
 	uae_u32 wb3_data;
-	uae_u16 wb3_status;
+	uae_u8 wb3_status, wb2_status;
 	int mmu_enabled;
 	int mmu_page_size;
 #endif
@@ -223,7 +234,7 @@ struct cputracestruct
 	uae_u32 startcycles;
 	int needendcycles;
 	int memoryoffset;
-	unsigned long cyclecounter, cyclecounter_pre, cyclecounter_post;
+	int cyclecounter, cyclecounter_pre, cyclecounter_post;
 	int readcounter, writecounter;
 	struct cputracememory ctm[MAX_CPUTRACESIZE];
 };
@@ -236,6 +247,7 @@ STATIC_INLINE uae_u32 munge24 (uae_u32 x)
 extern int mmu_enabled, mmu_triggered;
 extern int cpu_cycles;
 extern int cpucycleunit;
+extern bool m68k_pc_indirect;
 STATIC_INLINE void set_special (uae_u32 x)
 {
 	regs.spcflags |= x;
@@ -250,113 +262,160 @@ STATIC_INLINE void unset_special (uae_u32 x)
 #define m68k_dreg(r,num) ((r).regs[(num)])
 #define m68k_areg(r,num) (((r).regs + 8)[(num)])
 
-STATIC_INLINE void m68k_setpc (uaecptr newpc)
+
+/* direct (regs.pc_p) access */
+
+STATIC_INLINE void m68k_setpc(uaecptr newpc)
 {
-	regs.pc_p = regs.pc_oldp = get_real_address (newpc);
+	regs.pc_p = regs.pc_oldp = get_real_address(newpc);
 	regs.instruction_pc = regs.pc = newpc;
 }
-
-STATIC_INLINE uaecptr m68k_getpc (void)
+STATIC_INLINE uaecptr m68k_getpc(void)
 {
 	return (uaecptr)(regs.pc + ((uae_u8*)regs.pc_p - (uae_u8*)regs.pc_oldp));
 }
 #define M68K_GETPC m68k_getpc()
-
-STATIC_INLINE uaecptr m68k_getpc_p (uae_u8 *p)
+STATIC_INLINE uaecptr m68k_getpc_p(uae_u8 *p)
 {
 	return (uaecptr)(regs.pc + ((uae_u8*)p - (uae_u8*)regs.pc_oldp));
 }
-
-STATIC_INLINE void m68k_incpc (int o)
+STATIC_INLINE void m68k_incpc(int o)
 {
 	regs.pc_p += o;
 }
 
-#ifdef MMUEMU
-STATIC_INLINE void m68k_setpc_mmu (uaecptr newpc)
+STATIC_INLINE uae_u32 get_dibyte(int o)
+{
+	return do_get_mem_byte((uae_u8 *)((regs).pc_p + (o) + 1));
+}
+STATIC_INLINE uae_u32 get_diword(int o)
+{
+	return do_get_mem_word((uae_u16 *)((regs).pc_p + (o)));
+}
+STATIC_INLINE uae_u32 get_dilong(int o)
+{
+	return do_get_mem_long((uae_u32 *)((regs).pc_p + (o)));
+}
+STATIC_INLINE uae_u32 next_diword(void)
+{
+	uae_u32 r = do_get_mem_word((uae_u16 *)((regs).pc_p));
+	m68k_incpc(2);
+	return r;
+}
+STATIC_INLINE uae_u32 next_dilong(void)
+{
+	uae_u32 r = do_get_mem_long((uae_u32 *)((regs).pc_p));
+	m68k_incpc(4);
+	return r;
+}
+
+STATIC_INLINE void m68k_do_bsr(uaecptr oldpc, uae_s32 offset)
+{
+	m68k_areg(regs, 7) -= 4;
+	put_long(m68k_areg(regs, 7), oldpc);
+	m68k_incpc(offset);
+}
+STATIC_INLINE void m68k_do_rts(void)
+{
+	uae_u32 newpc = get_long(m68k_areg(regs, 7));
+	m68k_setpc(newpc);
+	m68k_areg(regs, 7) += 4;
+}
+
+/* indirect (regs.pc) access */
+
+STATIC_INLINE void m68k_setpci(uaecptr newpc)
 {
 	regs.instruction_pc = regs.pc = newpc;
-	regs.pc_p = regs.pc_oldp = 0;
 }
-#endif
-STATIC_INLINE void m68k_setpci (uaecptr newpc)
-{
-	regs.instruction_pc = regs.pc = newpc;
-}
-STATIC_INLINE uaecptr m68k_getpci (void)
+STATIC_INLINE uaecptr m68k_getpci(void)
 {
 	return regs.pc;
 }
-STATIC_INLINE void m68k_incpci (int o)
+STATIC_INLINE void m68k_incpci(int o)
 {
 	regs.pc += o;
 }
 
-STATIC_INLINE void m68k_do_rts (void)
+STATIC_INLINE uae_u32 get_iibyte(int o)
 {
-	uae_u32 newpc = get_long (m68k_areg (regs, 7));
-	m68k_setpc (newpc);
-	m68k_areg (regs, 7) += 4;
+	return get_wordi(m68k_getpci() + (o) + 1);
+}
+STATIC_INLINE uae_u32 get_iiword(int o)
+{
+	return get_wordi(m68k_getpci() + (o));
+}
+STATIC_INLINE uae_u32 get_iilong(int o)
+{
+	return get_longi(m68k_getpci () + (o));
 }
 
-STATIC_INLINE void m68k_do_bsr (uaecptr oldpc, uae_s32 offset)
+STATIC_INLINE uae_u32 next_iibyte (void)
 {
-	m68k_areg (regs, 7) -= 4;
-	put_long (m68k_areg (regs, 7), oldpc);
-	m68k_incpc (offset);
+	uae_u32 r = get_iibyte (0);
+	m68k_incpci (2);
+	return r;
+}
+STATIC_INLINE uae_u32 next_iiword (void)
+{
+	uae_u32 r = get_iiword (0);
+	m68k_incpci (2);
+	return r;
+}
+STATIC_INLINE uae_u32 next_iiwordi (void)
+{
+	uae_u32 r = get_wordi(m68k_getpci());
+	m68k_incpci (2);
+	return r;
+}
+STATIC_INLINE uae_u32 next_iilong (void)
+{
+	uae_u32 r = get_iilong(0);
+	m68k_incpci (4);
+	return r;
+}
+STATIC_INLINE uae_u32 next_iilongi (void)
+{
+	uae_u32 r = get_longi (m68k_getpci ());
+	m68k_incpci (4);
+	return r;
 }
 
-STATIC_INLINE uae_u32 get_ibyte (int o)
+STATIC_INLINE void m68k_do_bsri(uaecptr oldpc, uae_s32 offset)
 {
-	return do_get_mem_byte((uae_u8 *)((regs).pc_p + (o) + 1));
+	m68k_areg(regs, 7) -= 4;
+	put_long(m68k_areg(regs, 7), oldpc);
+	m68k_incpci(offset);
 }
-STATIC_INLINE uae_u32 get_iword (int o)
+STATIC_INLINE void m68k_do_rtsi(void)
 {
-	return do_get_mem_word((uae_u16 *)((regs).pc_p + (o)));
-}
-STATIC_INLINE uae_u32 get_ilong (int o)
-{
-	return do_get_mem_long((uae_u32 *)((regs).pc_p + (o)));
+	uae_u32 newpc = get_long(m68k_areg(regs, 7));
+	m68k_setpci(newpc);
+	m68k_areg(regs, 7) += 4;
 }
 
-#define get_iwordi(o) get_wordi(o)
-#define get_ilongi(o) get_longi(o)
+/* common access */
 
-/* These are only used by the 68020/68881 code, and therefore don't
- * need to handle prefetch.  */
-STATIC_INLINE uae_u32 next_ibyte (void)
+STATIC_INLINE void m68k_incpc_normal(int o)
 {
-	uae_u32 r = get_ibyte (0);
-	m68k_incpc (2);
-	return r;
+	if (m68k_pc_indirect)
+		m68k_incpci(o);
+	else
+		m68k_incpc(o);
 }
-STATIC_INLINE uae_u32 next_iword (void)
+
+STATIC_INLINE void m68k_setpc_normal(uaecptr pc)
 {
-	uae_u32 r = get_iword (0);
-	m68k_incpc (2);
-	return r;
-}
-STATIC_INLINE uae_u32 next_iwordi (void)
-{
-	uae_u32 r = get_iwordi (m68k_getpci ());
-	m68k_incpc (2);
-	return r;
-}
-STATIC_INLINE uae_u32 next_ilong (void)
-{
-	uae_u32 r = get_ilong (0);
-	m68k_incpc (4);
-	return r;
-}
-STATIC_INLINE uae_u32 next_ilongi (void)
-{
-	uae_u32 r = get_ilongi (m68k_getpci ());
-	m68k_incpc (4);
-	return r;
+	if (m68k_pc_indirect) {
+		regs.pc_p = regs.pc_oldp = 0;
+		m68k_setpci(pc);
+	}
+	else {
+		m68k_setpc(pc);
+	}
 }
 
 uae_u32 (*x_prefetch)(int);
-uae_u32 (*x_prefetch_long)(int);
 uae_u32 (*x_get_byte)(uaecptr addr);
 uae_u32 (*x_get_word)(uaecptr addr);
 uae_u32 (*x_get_long)(uaecptr addr);
@@ -408,10 +467,11 @@ int get_cpu_model (void);
 # undef Exception
 #endif
 
+extern void set_cpu_caches (bool flush);
 void REGPARAM3 MakeSR (void) REGPARAM;
-//void SetSR (uae_u16 sr);
 void REGPARAM3 MakeFromSR (void) REGPARAM;
 void REGPARAM3 Exception (int) REGPARAM;
+void REGPARAM3 ExceptionL (int, uaecptr) REGPARAM;
 void NMI (void);
 void NMI_delayed (void);
 void prepare_interrupt (uae_u32);
@@ -448,11 +508,14 @@ uae_u32 fpp_get_fpsr (void);
 void fpu_reset (void);
 void fpux_save (int*);
 void fpux_restore (int*);
+bool fpu_get_constant(fpdata *fp, int cr);
+int fpp_cond(int condition);
 
 void exception3 (uae_u32 opcode, uaecptr addr);
 void exception3i (uae_u32 opcode, uaecptr addr);
-extern void exception3pc (uae_u32 opcode, uaecptr addr, bool w, bool i, uaecptr pc);
-void exception2 (uaecptr addr);
+void exception3b (uae_u32 opcode, uaecptr addr, bool w, bool i, uaecptr pc);
+void exception2 (uaecptr addr, bool read, int size, uae_u32 fc);
+void exception2_fake (uaecptr addr);
 void cpureset (void);
 void cpu_halt (int id);
 

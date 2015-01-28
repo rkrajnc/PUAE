@@ -22,6 +22,10 @@ apt-get install zlib1g
 apt-get install libsdl1.2-dev
 apt-get install libgtk2.0-dev
 
+(if you want to build with sdl gui, you also need sdl_image and sdl_ttf)
+apt-get install libsdl-image1.2-dev
+apt-get install libsdl-ttf2.0-dev
+
 
 Configuring
 ===========
@@ -138,6 +142,42 @@ the SDL test. That is, configure with:
 
 I've not tested this myself, however, since I don't have a MacIntel
 box.
+
+
+Compiling for Portable Native Client
+------------------------------------
+
+Download and install the Native Client SDK from
+
+    https://developers.google.com/native-client/sdk/download
+
+Check out naclports from
+
+    https://code.google.com/p/naclports/wiki/HowTo_Checkout?tm=4
+
+(Last version of naclports confirmed to work:
+c55e3d617ee59617097a1f8a4ee52afa4feddc16)
+
+Adjust the paths in the configuration section of build_native_client.sh and
+then run
+
+    ./build_native_client.sh pnacl
+
+Incremental builds can be done with
+
+    ./build_native_client.sh incremental
+
+To test, make the content of the WEB_SERVER_DESTINATION directory configured in
+the build_native_client.sh script available through a web server, e.g., by
+executing (from that same directory):
+
+    python -m SimpleHTTPServer 8080
+
+Then use the following to deploy the files to the directory and run Chrome:
+
+    ./build_native_client.sh run
+
+For further instructions see build_native_client.sh.
 
 
 Building the SCSI emulation

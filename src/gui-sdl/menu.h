@@ -1,7 +1,7 @@
 /*
  * PUAE - The Un*x Amiga Emulator
  *
- * Interface to the SDL GUI                
+ * Interface to the SDL GUI
  * (initially was for GP2X)
  *
  * Copyright 2006 Mustafa TUFAN
@@ -12,7 +12,11 @@
 #define MENU_H
 #include <stdio.h>
 #include <SDL/SDL.h>
+#ifdef __APPLE__
+#include <SDL_ttf.h>
+#else
 #include <SDL/SDL_ttf.h>
+#endif
 
 #define iconsizex 100
 #define iconsizey 120

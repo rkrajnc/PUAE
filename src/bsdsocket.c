@@ -354,7 +354,7 @@ static struct socketbase *alloc_socketbase (TrapContext *context)
 		sb->signal = CallLib (context, sb->sysbase, -0x14A); /* AllocSignal */
 
 		if (sb->signal == -1) {
-			write_log (_T("bsdsocket: ERROR: Couldn't allocate signal for task 0x%lx.\n"), sb->ownertask);
+			write_log (_T("bsdsocket: ERROR: Couldn't allocate signal for task 0x%x.\n"), sb->ownertask);
 			xfree (sb);
 			return NULL;
 		}
@@ -657,7 +657,7 @@ static uae_u32 REGPARAM2 bsdsocklib_SetSocketSignals (TrapContext *context)
 {
 	struct socketbase *sb = get_socketbase (context);
 
-	BSDTRACE ((_T("SetSocketSignals(0x%08lx,0x%08lx,0x%08lx) -> "), m68k_dreg (regs, 0), m68k_dreg (regs, 1), m68k_dreg (regs, 2)));
+	BSDTRACE ((_T("SetSocketSignals(0x%08x,0x%08x,0x%08x) -> "), m68k_dreg (regs, 0), m68k_dreg (regs, 1), m68k_dreg (regs, 2)));
 	sb->eintrsigs = m68k_dreg (regs, 0);
 	sb->eventsigs = m68k_dreg (regs, 1);
 
@@ -717,7 +717,7 @@ static uae_u32 REGPARAM2 bsdsocklib_ObtainSocket (TrapContext *context)
 {
 	struct socketbase *sb = get_socketbase (context);
 	int sd;
-	long id;
+	int id;
 	SOCKET_TYPE s;
 	int i;
 
@@ -750,8 +750,8 @@ static uae_u32 REGPARAM2 bsdsocklib_ObtainSocket (TrapContext *context)
 static uae_u32 REGPARAM2 bsdsocklib_ReleaseSocket (TrapContext *context)
 {
 	struct socketbase *sb = get_socketbase (context);
-	int sd;
-	long id;
+	long sd;
+	int id;
 	SOCKET_TYPE s;
 	int i;
 	uae_u32 flags;
@@ -760,7 +760,7 @@ static uae_u32 REGPARAM2 bsdsocklib_ReleaseSocket (TrapContext *context)
 	id = m68k_dreg (regs, 1);
 
 	sd++;
-	BSDTRACE ((_T("ReleaseSocket(%d,%d) -> "), sd, id));
+	BSDTRACE ((_T("ReleaseSocket(%ld,%d) -> "), sd, id));
 
 	s = getsock (sb, sd);
 
@@ -813,8 +813,8 @@ static uae_u32 REGPARAM2 bsdsocklib_ReleaseSocket (TrapContext *context)
 static uae_u32 REGPARAM2 bsdsocklib_ReleaseCopyOfSocket (TrapContext *context)
 {
 	struct socketbase *sb = get_socketbase (context);
-	int sd;
-	long id;
+	long sd;
+	int id;
 	SOCKET_TYPE s;
 	int i;
 	uae_u32 flags;
@@ -823,7 +823,7 @@ static uae_u32 REGPARAM2 bsdsocklib_ReleaseCopyOfSocket (TrapContext *context)
 	id = m68k_dreg (regs, 1);
 
 	sd++;
-	BSDTRACE ((_T("ReleaseSocket(%d,%d) -> "), sd, id));
+	BSDTRACE ((_T("ReleaseSocket(%ld,%d) -> "), sd, id));
 
 	s = getsock (sb, sd);
 
@@ -885,7 +885,7 @@ static uae_u32 REGPARAM2 bsdsocklib_SetErrnoPtr (TrapContext *context)
 	struct socketbase *sb = get_socketbase (context);
 	uae_u32 errnoptr = m68k_areg (regs, 0), size = m68k_dreg (regs, 0);
 
-	BSDTRACE ((_T("SetErrnoPtr(0x%lx,%d) -> "), errnoptr, size));
+	BSDTRACE ((_T("SetErrnoPtr(0x%x,%d) -> "), errnoptr, size));
 
 	if (size == 1 || size == 2 || size == 4) {
 		sb->errnoptr = errnoptr;
@@ -1092,11 +1092,11 @@ static uae_u32 herrnotextptrs[sizeof (herrortexts) / sizeof (*herrortexts)];
 static const uae_u32 number_host_error = sizeof (herrortexts) / sizeof (*herrortexts);
 
 
-static const TCHAR *sana2io_errlist[] = 
+static const TCHAR *sana2io_errlist[] =
 {
   _T("No error"),				/* S2ERR_NO_ERROR */
   _T("Resource allocation failure"),	/* S2ERR_NO_RESOURCES */
-  _T("Unknown error code (2)"), 
+  _T("Unknown error code (2)"),
   _T("Invalid argument"),			/* S2ERR_BAD_ARGUMENT */
   _T("Inappropriate state"),		/* S2ERR_BAD_STATE */
   _T("Invalid address"),			/* S2ERR_BAD_ADDRESS */
@@ -1112,7 +1112,7 @@ static uae_u32 sana2iotextptrs[sizeof (sana2io_errlist) / sizeof (*sana2io_errli
 static const uae_u32 number_sana2io_error = sizeof (sana2io_errlist) / sizeof (*sana2io_errlist);
 
 
-static const TCHAR *sana2wire_errlist[] = 
+static const TCHAR *sana2wire_errlist[] =
 {
   _T("Generic error: 0"),                   /* S2WERR_GENERIC_ERROR */
   _T("Unit not configured"),		/* S2WERR_NOT_CONFIGURED */
@@ -1139,8 +1139,8 @@ static uae_u32 sana2wiretextptrs[sizeof (sana2wire_errlist) / sizeof (*sana2wire
 static const uae_u32 number_sana2wire_error = sizeof (sana2wire_errlist) / sizeof (*sana2wire_errlist);
 
 
-static const TCHAR *io_errlist[] = 
-{ 
+static const TCHAR *io_errlist[] =
+{
   _T("Unknown error"),			/* 0 */
   _T("Device or unit failed to open"),	/* IOERR_OPENFAIL */
   _T("Request aborted"),			/* IOERR_ABORTED */
@@ -1252,7 +1252,7 @@ static uae_u32 REGPARAM2 bsdsocklib_SocketBaseTagList (TrapContext *context)
 					BSDTRACE ((_T("TAG_IGNORE")));
 			break;
 		case TAG_MORE:
-					BSDTRACE ((_T("TAG_MORE(0x%lx)"), currval));
+					BSDTRACE ((_T("TAG_MORE(0x%x)"), currval));
 			tagptr = currval;
 			break;
 		case TAG_SKIP:
@@ -1297,7 +1297,7 @@ static uae_u32 REGPARAM2 bsdsocklib_SocketBaseTagList (TrapContext *context)
 					tagcopy (currtag, currval, tagptr, (uae_u32 *)&sb->sb_herrno);
 					break;
 				case SBTC_DTABLESIZE:
-					BSDTRACE ((_T("SBTC_DTABLESIZE),0x%lx"), currval));
+					BSDTRACE ((_T("SBTC_DTABLESIZE),0x%x"), currval));
 					if (currtag & 1) {
 						bsdsocklib_SetDTableSize(sb, currval);
 					} else {
@@ -1341,7 +1341,7 @@ static uae_u32 REGPARAM2 bsdsocklib_SocketBaseTagList (TrapContext *context)
 						} else { /* SBTM_GETVAL */
 							ulTmp = currval;
 						}
-						BSDTRACE ((_T("IOERRNOSTRPTR),%d"), ulTmp));
+						BSDTRACE ((_T("IOERRNOSTRPTR),%lu"), ulTmp));
 						if (ulTmp < number_sys_error) {
 							tagcopy (currtag, currval, tagptr, &iotextptrs[ulTmp]);
 						} else {
@@ -1360,7 +1360,7 @@ static uae_u32 REGPARAM2 bsdsocklib_SocketBaseTagList (TrapContext *context)
 						} else { /* SBTM_GETVAL */
 							ulTmp = currval;
 						}
-						BSDTRACE ((_T("S2ERRNOSTRPTR),%d"), ulTmp));
+						BSDTRACE ((_T("S2ERRNOSTRPTR),%lu"), ulTmp));
 						if (ulTmp < number_sys_error) {
 							tagcopy (currtag, currval, tagptr, &sana2iotextptrs[ulTmp]);
 						} else {
@@ -1379,7 +1379,7 @@ static uae_u32 REGPARAM2 bsdsocklib_SocketBaseTagList (TrapContext *context)
 						} else { /* SBTM_GETVAL */
 							ulTmp = currval;
 						}
-						BSDTRACE ((_T("S2WERRNOSTRPTR),%d"), ulTmp));
+						BSDTRACE ((_T("S2WERRNOSTRPTR),%lu"), ulTmp));
 						if (ulTmp < number_sys_error) {
 							tagcopy (currtag, currval, tagptr, &sana2wiretextptrs[ulTmp]);
 						} else {
@@ -1398,7 +1398,7 @@ static uae_u32 REGPARAM2 bsdsocklib_SocketBaseTagList (TrapContext *context)
 						} else { /* SBTM_GETVAL */
 							ulTmp = currval;
 						}
-						BSDTRACE ((_T("ERRNOSTRPTR),%d"), ulTmp));
+						BSDTRACE ((_T("ERRNOSTRPTR),%lu"), ulTmp));
 						if (ulTmp < number_sys_error) {
 							tagcopy (currtag, currval, tagptr, &errnotextptrs[ulTmp]);
 						} else {
@@ -1417,7 +1417,7 @@ static uae_u32 REGPARAM2 bsdsocklib_SocketBaseTagList (TrapContext *context)
 						} else { /* SBTM_GETVAL */
 							ulTmp = currval;
 						}
-						BSDTRACE ((_T("HERRNOSTRPTR),%d"), ulTmp));
+						BSDTRACE ((_T("HERRNOSTRPTR),%lu"), ulTmp));
 						if (ulTmp < number_host_error) {
 							tagcopy (currtag, currval, tagptr, &herrnotextptrs[ulTmp]);
 						} else {
@@ -1427,22 +1427,22 @@ static uae_u32 REGPARAM2 bsdsocklib_SocketBaseTagList (TrapContext *context)
 					break;
 
 				case SBTC_ERRNOBYTEPTR:
-					BSDTRACE ((_T("SBTC_ERRNOBYTEPTR),0x%lx"), currval));
+					BSDTRACE ((_T("SBTC_ERRNOBYTEPTR),0x%x"), currval));
 					tagcopy (currtag, currval, tagptr, &sb->errnoptr);
 					sb->errnosize = 1;
 					break;
 				case SBTC_ERRNOWORDPTR:
-					BSDTRACE ((_T("SBTC_ERRNOWORDPTR),0x%lx"), currval));
+					BSDTRACE ((_T("SBTC_ERRNOWORDPTR),0x%x"), currval));
 					tagcopy (currtag, currval, tagptr, &sb->errnoptr);
 					sb->errnosize = 2;
 					break;
 				case SBTC_ERRNOLONGPTR:
-					BSDTRACE ((_T("SBTC_ERRNOLONGPTR),0x%lx"), currval));
+					BSDTRACE ((_T("SBTC_ERRNOLONGPTR),0x%x"), currval));
 					tagcopy (currtag, currval, tagptr, &sb->errnoptr);
 					sb->errnosize = 4;
 					break;
 				case SBTC_HERRNOLONGPTR:
-					BSDTRACE ((_T("SBTC_HERRNOLONGPTR),0x%lx"), currval));
+					BSDTRACE ((_T("SBTC_HERRNOLONGPTR),0x%x"), currval));
 					tagcopy (currtag, currval, tagptr, &sb->herrnoptr);
 					sb->herrnosize = 4;
 					break;
@@ -1564,7 +1564,7 @@ void bsdlib_reset (void)
 	for (sb = socketbases; sb; sb = nsb) {
 		nsb = sb->next;
 
-		write_log (_T("BSDSOCK: cleanup start socket %x\n"), sb);
+		write_log (_T("BSDSOCK: cleanup start socket %p\n"), sb);
 		host_sbcleanup (sb);
 
 		xfree (sb->dtable);

@@ -4,7 +4,7 @@
  * Hardfile emulation
  *
  * Copyright 1995 Bernd Schmidt
- *           2002 Toni Wilen (scsi emulation, 64-bit support)
+ *           2014 Toni Wilen (scsi emulation, 64-bit support)
  */
 
 #define USE_CHD 0
@@ -226,8 +226,8 @@ void getchsgeometry_hdf (struct hardfiledata *hfd, uae_u64 size, int *pcyl, int 
 				for (i = 0; i < 512; i += 4)
 					chk += (block[i] << 24) | (block[i + 1] << 16) | (block[i + 2] << 8) | (block[i + 3] << 0);
 				if (!chk && block[0] == 0 && block[1] == 0 && block[2] == 0 && block[3] == 2 &&
-					block[4] == 0 && block[5] == 0 && block[6] == 0 && block[7] == 0 && 
-					block[8] == 0 && block[9] == 0 && block[10] == 0 && block[11] == 0 && 
+					block[4] == 0 && block[5] == 0 && block[6] == 0 && block[7] == 0 &&
+					block[8] == 0 && block[9] == 0 && block[10] == 0 && block[11] == 0 &&
 					block[508] == 0 && block[509] == 0 && block[510] == 0 && block[511] == 1) {
 						return;
 				}
@@ -538,7 +538,7 @@ int hdf_open (struct hardfiledata *hfd, const TCHAR *pname)
 		hfd->vhd_sectormapblock = -1;
 		hfd->vhd_bitmapsize = ((hfd->vhd_blocksize / (8 * 512)) + 511) & ~511;
 	}
-	write_log (_T("HDF is VHD %s image, virtual size=%dK\n"),
+	write_log (_T("HDF is VHD %s image, virtual size=%lluK\n"),
 		hfd->hfd_type == HFD_VHD_FIXED ? _T("fixed") : _T("dynamic"),
 		hfd->virtsize / 1024);
 	hdf_init_cache (hfd);
@@ -1368,32 +1368,34 @@ int scsi_hd_emulate (struct hardfiledata *hfd, struct hd_hardfiledata *hdhfd, ua
 			goto outofbounds;
 		scsi_len = (uae_u32)cmd_writex (hfd, scsi_data, offset, len);
 		break;
-#if 0
-	case 0x2f: /* VERIFY */
+	case 0x2f: /* VERIFY (10) */
 		{
 			int bytchk = cmdbuf[1] & 2;
 			if (nodisk (hfd))
 				goto nodisk;
-			offset = rl (cmdbuf + 2);
-			offset *= hfd->ci.blocksize;
-			len = rl (cmdbuf + 7 - 2) & 0xffff;
-			len *= hfd->ci.blocksize;
-			if (checkbounds (hfd, offset, len)) {
-				uae_u8 *vb = xmalloc (hfd->ci.blocksize);
-				while (len > 0) {
-					int len = cmd_readx (hfd, vb, offset, hfd->ci.blocksize);
-					if (bytchk) {
-						if (memcmp (vb, scsi_data, hfd->ci.blocksize))
+			if (bytchk) {
+				offset = rl (cmdbuf + 2);
+				offset *= hfd->ci.blocksize;
+				len = rl (cmdbuf + 7 - 2) & 0xffff;
+				len *= hfd->ci.blocksize;
+				uae_u8 *vb = xmalloc (uae_u8, hfd->ci.blocksize);
+				if (checkbounds (hfd, offset, len)) {
+					while (len > 0) {
+						int readlen = cmd_readx (hfd, vb, offset, hfd->ci.blocksize);
+						if (readlen != hfd->ci.blocksize || memcmp (vb, scsi_data, hfd->ci.blocksize)) {
+							xfree (vb);
 							goto miscompare;
+						}
 						scsi_data += hfd->ci.blocksize;
+						offset += hfd->ci.blocksize;
+						len -= hfd->ci.blocksize;
 					}
-					offset += hfd->ci.blocksize;
 				}
 				xfree (vb);
 			}
+			scsi_len = 0;
 		}
 		break;
-#endif
 	case 0x35: /* SYNCRONIZE CACHE (10) */
 		if (nodisk (hfd))
 			goto nodisk;
@@ -1469,7 +1471,7 @@ outofbounds:
 		s[12] = 0x21; /* LOGICAL BLOCK OUT OF RANGE */
 		ls = 0x12;
 		break;
-//miscompare:
+miscompare:
 		lr = -1;
 		status = 2; /* CHECK CONDITION */
 		s[0] = 0x70;
@@ -1530,8 +1532,9 @@ static int handle_scsi (uaecptr request, struct hardfiledata *hfd)
 		scsi_log (_T("RD:"));
 		i = 0;
 		while (i < (uae_u32)reply_len) {
-			if (i < 24)
+			if (i < 24) {
 				scsi_log (_T("%02X%c"), reply[i], i < reply_len - 1 ? '.' : ' ');
+			}
 			put_byte (scsi_data + i, reply[i]);
 			i++;
 		}
@@ -1661,8 +1664,9 @@ static void abort_async (struct hardfileprivdata *hfpd, uaecptr request, int err
 		i++;
 	}
 	i = release_async_request (hfpd, request);
-	if (i >= 0)
+	if (i >= 0) {
 		hf_log (_T("asyncronous request=%08X aborted, error=%d\n"), request, errcode);
+	}
 }
 
 static void *hardfile_thread (void *devs);
@@ -1698,27 +1702,25 @@ static uae_u32 REGPARAM2 hardfile_open (TrapContext *context)
 	int unit = mangleunit (m68k_dreg (regs, 0));
 	struct hardfileprivdata *hfpd = &hardfpd[unit];
 	int err = IOERR_OPENFAIL;
-	int size = get_word (ioreq + 0x12);
 
-	/* boot device port size == 0!? KS 1.x size = 12??? */
-	if (size >= IOSTDREQ_SIZE || size == 0 || kickstart_version == 0xffff || kickstart_version < 39) {
-		/* Check unit number */
-		if (unit >= 0) {
-			struct hardfiledata *hfd = get_hardfile_data (unit);
-			if (hfd && (hfd->handle_valid || hfd->drive_empty) && start_thread (context, unit)) {
-				put_word (hfpd->base + 32, get_word (hfpd->base + 32) + 1);
-				put_long (ioreq + 24, unit); /* io_Unit */
-				put_byte (ioreq + 31, 0); /* io_Error */
-				put_byte (ioreq + 8, 7); /* ln_type = NT_REPLYMSG */
-				hf_log (_T("hardfile_open, unit %d (%d), OK\n"), unit, m68k_dreg (regs, 0));
-				return 0;
-			}
+	/* boot device port size == 0!? KS 1.x size = 12???
+	 * Ignore message size, too many programs do not set it correct
+	 * int size = get_word (ioreq + 0x12);
+	 */
+	/* Check unit number */
+	if (unit >= 0) {
+		struct hardfiledata *hfd = get_hardfile_data (unit);
+		if (hfd && (hfd->handle_valid || hfd->drive_empty) && start_thread (context, unit)) {
+			put_word (hfpd->base + 32, get_word (hfpd->base + 32) + 1);
+			put_long (ioreq + 24, unit); /* io_Unit */
+			put_byte (ioreq + 31, 0); /* io_Error */
+			put_byte (ioreq + 8, 7); /* ln_type = NT_REPLYMSG */
+			hf_log (_T("hardfile_open, unit %d (%d), OK\n"), unit, m68k_dreg (regs, 0));
+			return 0;
 		}
-		if (unit < 1000 || is_hardfile (unit) == FILESYS_VIRTUAL || is_hardfile (unit) == FILESYS_CD)
-			err = 50; /* HFERR_NoBoard */
-	} else {
-		err = IOERR_BADLENGTH;
 	}
+	if (unit < 1000 || is_hardfile (unit) == FILESYS_VIRTUAL || is_hardfile (unit) == FILESYS_CD)
+		err = 50; /* HFERR_NoBoard */
 	hf_log (_T("hardfile_open, unit %d (%d), ERR=%d\n"), unit, m68k_dreg (regs, 0), err);
 	put_long (ioreq + 20, (uae_u32)err);
 	put_byte (ioreq + 31, (uae_u8)err);
@@ -2060,8 +2062,9 @@ static uae_u32 REGPARAM2 hardfile_beginio (TrapContext *context)
 	canquick = hardfile_canquick (hfd, request);
 	if (((flags & 1) && canquick) || (canquick < 0)) {
 		hf_log (_T("hf quickio unit=%d request=%p cmd=%d\n"), unit, request, cmd);
-		if (hardfile_do_io (hfd, hfpd, request))
+		if (hardfile_do_io (hfd, hfpd, request)) {
 			hf_log2 (_T("uaehf.device cmd %d bug with IO_QUICK\n"), cmd);
+		}
 		if (!(flags & 1))
 			uae_ReplyMsg (request);
 		return get_byte (request + 31);

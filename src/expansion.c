@@ -270,7 +270,9 @@ static void expamem_init_last (void)
 {
 	expamem_init_clear2 ();
 	write_log (_T("Memory map after autoconfig:\n"));
+#ifdef DEBUGGER
 	memory_map_dump ();
+#endif
 }
 
 void expamem_next (void)
@@ -288,14 +290,14 @@ void expamem_next (void)
 
 static uae_u32 REGPARAM2 expamem_lget (uaecptr addr)
 {
-	write_log (_T("warning: READ.L from address $%lx PC=%x\n"), addr, M68K_GETPC);
+	write_log (_T("warning: READ.L from address $%x PC=%x\n"), addr, M68K_GETPC);
 	return (expamem_wget (addr) << 16) | expamem_wget (addr + 2);
 }
 
 static uae_u32 REGPARAM2 expamem_wget (uaecptr addr)
 {
 	uae_u32 v = (expamem_bget (addr) << 8) | expamem_bget (addr + 1);
-	write_log (_T("warning: READ.W from address $%lx=%04x PC=%x\n"), addr, v & 0xffff, M68K_GETPC);
+	write_log (_T("warning: READ.W from address $%x=%04x PC=%x\n"), addr, v & 0xffff, M68K_GETPC);
 	return v;
 }
 
@@ -342,7 +344,7 @@ static void REGPARAM2 expamem_lput (uaecptr addr, uae_u32 value)
 #ifdef JIT
 	special_mem |= S_WRITE;
 #endif
-	write_log (_T("warning: WRITE.L to address $%lx : value $%lx\n"), addr, value);
+	write_log (_T("warning: WRITE.L to address $%x : value $%x\n"), addr, value);
 }
 
 static void REGPARAM2 expamem_wput (uaecptr addr, uae_u32 value)
@@ -357,7 +359,7 @@ static void REGPARAM2 expamem_wput (uaecptr addr, uae_u32 value)
 	if (ecard >= cardno)
 		return;
 	if (expamem_type () != zorroIII)
-		write_log (_T("warning: WRITE.W to address $%lx : value $%x\n"), addr, value);
+		write_log (_T("warning: WRITE.W to address $%x : value $%x\n"), addr, value);
 	else {
 		switch (addr & 0xff) {
 		case 0x44:
@@ -470,7 +472,7 @@ static void expamem_init_cd32fmv (void)
 		return;
 	write_log (_T("CD32 FMV ROM '%s' %d.%d\n"), rl->path, rl->rd->ver, rl->rd->rev);
 	rd = rl->rd;
-	z = read_rom (&rd);
+	z = read_rom (rd);
 	if (z) {
 		zfile_fread (expamem, 128, 1, z);
 		zfile_fclose (z);
@@ -691,7 +693,7 @@ static void REGPARAM2 filesys_lput (uaecptr addr, uae_u32 l)
 #ifdef JIT
 	special_mem |= S_WRITE;
 #endif
-	write_log (_T("filesys_lput called PC=%p\n"), M68K_GETPC);
+	write_log (_T("filesys_lput called PC=%08x\n"), M68K_GETPC);
 }
 
 static void REGPARAM2 filesys_wput (uaecptr addr, uae_u32 w)
@@ -699,7 +701,7 @@ static void REGPARAM2 filesys_wput (uaecptr addr, uae_u32 w)
 #ifdef JIT
 	special_mem |= S_WRITE;
 #endif
-	write_log (_T("filesys_wput called PC=%p\n"), M68K_GETPC);
+	write_log (_T("filesys_wput called PC=%08x\n"), M68K_GETPC);
 }
 
 static void REGPARAM2 filesys_bput (uaecptr addr, uae_u32 b)
@@ -761,24 +763,27 @@ static void expamem_map_fastcard (void)
 	fastmem_bank.start = ((expamem_hi | (expamem_lo >> 4)) << 16);
 	if (fastmem_bank.start) {
 		map_banks (&fastmem_bank, fastmem_bank.start >> 16, fastmem_bank.allocated >> 16, 0);
-		write_log (_T("Fastcard: mapped @$%lx: %dMB fast memory\n"), fastmem_bank.start, fastmem_bank.allocated >> 20);
+		write_log (_T("Fastcard: mapped @$%x: %dMB fast memory\n"), fastmem_bank.start, fastmem_bank.allocated >> 20);
 	}
 }
 
 static void expamem_init_fastcard (void)
 {
-	uae_u16 mid = (currprefs.cs_a2091 || currprefs.uae_hide) ? commodore : uae_id;
-	uae_u8 pid = (currprefs.cs_a2091 || currprefs.uae_hide) ? commodore_a2091_ram : (currprefs.maprom ? 1 : 81);
+	uae_u16 mid = (currprefs.a2091 || currprefs.uae_hide) ? commodore : uae_id;
+	uae_u8 pid = (currprefs.a2091 || currprefs.uae_hide) ? commodore_a2091_ram : (currprefs.maprom ? 1 : 81);
+	uae_u8 type = add_memory | zorroII | (currprefs.a2091 ? chainedconfig : 0);
 
 	expamem_init_clear ();
 	if (fastmem_bank.allocated == 0x100000)
-		expamem_write (0x00, Z2_MEM_1MB + add_memory + zorroII);
+		type |= Z2_MEM_1MB;
 	else if (fastmem_bank.allocated == 0x200000)
-		expamem_write (0x00, Z2_MEM_2MB + add_memory + zorroII);
+		type |= Z2_MEM_2MB;
 	else if (fastmem_bank.allocated == 0x400000)
-		expamem_write (0x00, Z2_MEM_4MB + add_memory + zorroII);
+		type |= Z2_MEM_4MB;
 	else if (fastmem_bank.allocated == 0x800000)
-		expamem_write (0x00, Z2_MEM_8MB + add_memory + zorroII);
+		type |= Z2_MEM_8MB;
+
+	expamem_write (0x00, type);
 
 	expamem_write (0x08, care_addr);
 
@@ -820,13 +825,17 @@ static void expamem_map_filesys (void)
 	org (a);
 }
 
+#define FILESYS_DIAGPOINT 0x01e0
+#define FILESYS_BOOTPOINT 0x01e6
+#define FILESYS_DIAGAREA 0x2000
+
 static void expamem_init_filesys (void)
 {
 	/* struct DiagArea - the size has to be large enough to store several device ROMTags */
 	uae_u8 diagarea[] = { 0x90, 0x00, /* da_Config, da_Flags */
 		0x02, 0x00, /* da_Size */
-		0x01, 0x00, /* da_DiagPoint */
-		0x01, 0x06  /* da_BootPoint */
+		FILESYS_DIAGPOINT >> 8, FILESYS_DIAGPOINT & 0xff,
+		FILESYS_BOOTPOINT >> 8, FILESYS_BOOTPOINT & 0xff
 	};
 
 	expamem_init_clear ();
@@ -850,15 +859,15 @@ static void expamem_init_filesys (void)
 	expamem_write (0x40, 0x00); /* Ctrl/Statusreg.*/
 
 	/* Build a DiagArea */
-	memcpy (expamem + 0x2000, diagarea, sizeof diagarea);
+	memcpy (expamem + FILESYS_DIAGAREA, diagarea, sizeof diagarea);
 
 	/* Call DiagEntry */
-	do_put_mem_word ((uae_u16 *)(expamem + 0x2100), 0x4EF9); /* JMP */
-	do_put_mem_long ((uae_u32 *)(expamem + 0x2102), ROM_filesys_diagentry);
+	do_put_mem_word ((uae_u16 *)(expamem + FILESYS_DIAGAREA + FILESYS_DIAGPOINT), 0x4EF9); /* JMP */
+	do_put_mem_long ((uae_u32 *)(expamem + FILESYS_DIAGAREA + FILESYS_DIAGPOINT + 2), ROM_filesys_diagentry);
 
 	/* What comes next is a plain bootblock */
-	do_put_mem_word ((uae_u16 *)(expamem + 0x2106), 0x4EF9); /* JMP */
-	do_put_mem_long ((uae_u32 *)(expamem + 0x2108), EXPANSION_bootcode);
+	do_put_mem_word ((uae_u16 *)(expamem + FILESYS_DIAGAREA + FILESYS_BOOTPOINT), 0x4EF9); /* JMP */
+	do_put_mem_long ((uae_u32 *)(expamem + FILESYS_DIAGAREA + FILESYS_BOOTPOINT + 2), EXPANSION_bootcode);
 
 	memcpy (filesysory, expamem, 0x3000);
 }
@@ -963,7 +972,7 @@ static void expamem_map_gfxcard (void)
 	gfxmem_bank.start = (expamem_hi | (expamem_lo >> 4)) << 16;
 	if (gfxmem_bank.start) {
 		map_banks (&gfxmem_bank, gfxmem_bank.start >> 16, gfxmem_bank.allocated >> 16, gfxmem_bank.allocated);
-		write_log (_T("%sUAEGFX-card: mapped @$%lx, %d MB RTG RAM\n"), currprefs.rtgmem_type ? _T("Z3") : _T("Z2"), gfxmem_bank.baseaddr, gfxmem_bank.allocated / 0x100000);
+		write_log (_T("%sUAEGFX-card: mapped @$%p, %d MB RTG RAM\n"), currprefs.rtgmem_type ? _T("Z3") : _T("Z2"), gfxmem_bank.baseaddr, gfxmem_bank.allocated / 0x100000);
 	}
 }
 
@@ -1072,9 +1081,12 @@ static void allocate_expamem (void)
 	z3chipmem_bank.start = currprefs.z3fastmem_start;
 	if (currprefs.mbresmem_high_size == 128 * 1024 * 1024)
 		z3chipmem_bank.start += 16 * 1024 * 1024;
-	z3fastmem_bank.start = z3chipmem_bank.start;
+	if (currprefs.jit_direct_compatible_memory)
+		z3fastmem_bank.start = z3chipmem_bank.start;
+	else
+		z3fastmem_bank.start = 0x40000000;
 	if (currprefs.z3chipmem_size)
-		z3fastmem_bank.start += currprefs.z3chipmem_size + 16 * 1024 * 1024;
+		z3fastmem_bank.start += currprefs.z3chipmem_size;
 	z3fastmem2_bank.start = z3fastmem_bank.start + currprefs.z3fastmem_size;
 
 	if (fastmem_bank.allocated != currprefs.fastmem_size) {
@@ -1177,10 +1189,12 @@ static uaecptr check_boot_rom (void)
 		if (valid_address (RTAREA_DEFAULT, 65536))
 			b = RTAREA_BACKUP;
 	}
+#ifdef FILESYS
 	if (nr_directory_units (NULL))
 		return b;
 	if (nr_directory_units (&currprefs))
 		return b;
+#endif
 	if (currprefs.socket_emu)
 		return b;
 	if (currprefs.uaeserial)
@@ -1236,7 +1250,7 @@ static void expamem_init_a2091 (void)
 static void expamem_init_a4091 (void)
 {
 #ifdef NCR
-	ncr_init ();
+	ncr_autoconfig_init ();
 #endif
 }
 static void expamem_init_gfxboard_memory (void)
@@ -1251,16 +1265,7 @@ static void expamem_init_gfxboard_registers (void)
 	gfxboard_init_registers ();
 #endif
 }
-#if 0
-void p96memstart (void)
-{
-	/* make sure there is always empty space between Z3 and P96 RAM */
-	p96ram_start = currprefs.z3fastmem_bank.start + ((currprefs.z3fastmem_size + currprefs.z3fastmem2_size + currprefs.z3chipmem_size + 0xffffff) & ~0xffffff);
-	if (p96ram_start == currprefs.z3fastmem_bank.start + currprefs.z3fastmem_size + currprefs.z3fastmem2_size + currprefs.z3chipmem_size &&
-		(currprefs.z3fastmem_size + currprefs.z3fastmem2_size + currprefs.z3chipmem_size < 512 * 1024 * 1024 || currprefs.rtgmem_size < 128 * 1024 * 1024))
-		p96ram_start += 0x1000000;
-}
-#endif
+
 void expamem_reset (void)
 {
 	int do_mount = 1;
@@ -1290,6 +1295,7 @@ void expamem_reset (void)
 	}
 	if (need_uae_boot_rom () == 0)
 		do_mount = 0;
+
 	if (fastmem_bank.baseaddr != NULL && currprefs.chipmem_size <= 2 * 1024 * 1024) {
 		if (currprefs.fastmem_autoconfig) {
 			fastmem_bank.name = _T("Fast memory");
@@ -1301,6 +1307,14 @@ void expamem_reset (void)
 			map_banks (&fastmem_bank, 0x00200000 >> 16, fastmem_bank.allocated >> 16, 0);
 		}
 	}
+	// immediately after Z2Fast so that they can be emulated as A590/A2091 with fast ram.
+#ifdef A2091
+	if (currprefs.a2091) {
+		card_name[cardno] = _T("A2091");
+		card_init[cardno] = expamem_init_a2091;
+		card_map[cardno++] = NULL;
+	}
+#endif
 
 #ifdef CDTV
 	if (currprefs.cs_cdtvcd) {
@@ -1318,13 +1332,6 @@ void expamem_reset (void)
 			card_init[cardno] = expamem_init_cd32fmv;
 			card_map[cardno++] = expamem_map_cd32fmv;
 		}
-	}
-#endif
-#ifdef A2091
-	if (currprefs.cs_a2091) {
-		card_name[cardno] = _T("A2091");
-		card_init[cardno] = expamem_init_a2091;
-		card_map[cardno++] = NULL;
 	}
 #endif
 #ifdef A2065
@@ -1392,7 +1399,7 @@ void expamem_reset (void)
 	if (z3chipmem_bank.baseaddr != NULL)
 		map_banks (&z3chipmem_bank, z3chipmem_bank.start >> 16, currprefs.z3chipmem_size >> 16, z3chipmem_bank.allocated);
 #ifdef NCR
-	if (currprefs.cs_a4091) {
+	if (currprefs.a4091) {
 		card_name[cardno] = _T("A4091");
 		card_init[cardno] = expamem_init_a4091;
 		card_map[cardno++] = NULL;

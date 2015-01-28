@@ -1,6 +1,17 @@
+/*
+ * UAE - The Un*x Amiga Emulator
+ *
+ * Config file handling
+ * This still needs some thought before it's complete...
+ *
+ * Copyright 1998 Brian King, Bernd Schmidt
+ * Copyright 2006 Richard Drummond
+ * Copyright 2008 Mustafa Tufan
+ */
+
 #pragma once
-#ifndef SRC_INCLUDE_CFGFILE_H_INCLUDED
-#define SRC_INCLUDE_CFGFILE_H_INCLUDED 1
+#ifndef CFGFILE_H
+#define CFGFILE_H
 
 #include "options.h"
 #include "zfile.h"
@@ -48,5 +59,5 @@ int cfgfile_multipath (const TCHAR *option, const TCHAR *value, const TCHAR *nam
 int cfgfile_rom (const TCHAR *option, const TCHAR *value, const TCHAR *name, TCHAR *location, int maxsz);
 
 
-#endif // SRC_INCLUDE_CFGFILE_H_INCLUDED
+#endif // CFGFILE_H
 

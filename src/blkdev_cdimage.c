@@ -8,7 +8,7 @@
  * - ccd/img and ccd/img/sub
  * - chd cd
  *
- * Copyright 2010-2013 Toni Wilen
+ * Copyright 2010-2014 Toni Wilen
  *
  */
 #include "sysconfig.h"
@@ -30,9 +30,11 @@
 
 #include "cdrom.h"
 
+#ifdef WITH_CHD
 #include "archivers/chd/chdtypes.h"
 #include "archivers/chd/chd.h"
 #include "archivers/chd/chdcd.h"
+#endif
 
 #define scsi_log write_log
 
@@ -63,7 +65,9 @@ struct cdtoc
 	audenc enctype;
 	int writeoffset;
 	int subcode;
+#ifdef WITH_CHD
 	const cdrom_track_info *chdtrack;
+#endif
 };
 
 struct cdunit {
@@ -85,12 +89,15 @@ struct cdunit {
 	play_subchannel_callback cdda_subfunc;
 	play_status_callback cdda_statusfunc;
 	int cdda_delay, cdda_delay_frames;
+	bool thread_active;
 
 	TCHAR imgname[MAX_DPATH];
 	uae_sem_t sub_sem;
 	struct device_info di;
+#ifdef WITH_CHD
 	chd_file *chd_f;
 	cdrom_file *chd_cdf;
+#endif
 };
 
 static struct cdunit cdunits[MAX_TOTAL_SCSI_DEVICES];
@@ -137,7 +144,9 @@ static struct cdtoc *findtoc (struct cdunit *cdu, int *sectorp)
 static int do_read (struct cdunit *cdu, struct cdtoc *t, uae_u8 *data, int sector, int offset, int size)
 {
 	if (t->enctype == ENC_CHD) {
+#ifdef WITH_CHD
 		return read_partial_sector(cdu->chd_cdf, data, sector + t->offset, 0, offset, size) == CHDERR_NONE;
+#endif
 	} else if (t->handle) {
 		int ssize = t->size + t->skipsize;
 		zfile_fseek (t->handle, t->offset + (uae_u64)sector * ssize + offset, SEEK_SET);
@@ -266,10 +275,12 @@ static int getsub_deinterleaved (uae_u8 *dst, struct cdunit *cdu, struct cdtoc *
 	uae_sem_wait (&cdu->sub_sem);
 	if (t->subcode) {
 		if (t->enctype == ENC_CHD) {
+#ifdef WITH_CHD
 			const cdrom_track_info *cti = t->chdtrack;
 			ret = do_read (cdu, t, dst, sector, cti->datasize, cti->subsize);
 			if (ret)
 				ret = t->subcode;
+#endif
 		} else if (t->subhandle) {
 			int offset = 0;
 			int totalsize = SUB_CHANNEL_SIZE;
@@ -393,7 +404,6 @@ static void *cdda_play_func (void *v)
 {
 	int cdda_pos;
 	int num_sectors = CDDA_BUFFERS;
-	int quit = 0;
 	int bufnum;
 	int bufon[2];
 	int oldplay;
@@ -402,6 +412,8 @@ static void *cdda_play_func (void *v)
 	bool foundsub;
 	struct cdunit *cdu = (struct cdunit*)v;
 	int oldtrack = -1;
+
+	cdu->thread_active = true;
 
 	while (cdu->cdda_play == 0)
 		Sleep (10);
@@ -518,7 +530,7 @@ static void *cdda_play_func (void *v)
 
 			memset (cda->buffers[bufnum], 0, num_sectors * 2352);
 
-			for (cnt = 0; cnt < num_sectors; cnt++) {
+			for (cnt = 0; cnt < num_sectors && cdu->cdda_play > 0; cnt++) {
 				uae_u8 *dst = cda->buffers[bufnum] + cnt * 2352;
 				uae_u8 subbuf[SUB_CHANNEL_SIZE];
 				sector = cdda_pos;
@@ -535,6 +547,7 @@ static void *cdda_play_func (void *v)
 					}
 					if (!(t->ctrl & 4)) {
 						if (t->enctype == ENC_CHD) {
+#ifdef WITH_CHD
 							do_read (cdu, t, dst, sector, 0, t->size);
 							for (int i = 0; i < 2352; i+=2) {
 								uae_u8 p;
@@ -542,6 +555,7 @@ static void *cdda_play_func (void *v)
 								dst[i + 0] = dst[i + 1];
 								dst[i +1] = p;
 							}
+#endif
 						} else if (t->handle) {
 							int totalsize = t->size + t->skipsize;
 							int offset = t->offset;
@@ -588,19 +602,21 @@ static void *cdda_play_func (void *v)
 					dofinish = 1;
 
 			}
-	
+
 			if (idleframes <= 0)
 				cdu->cd_last_pos = cdda_pos;
 
 			bufon[bufnum] = 1;
 			cda->setvolume (currprefs.sound_volume_cd >= 0 ? currprefs.sound_volume_cd : currprefs.sound_volume, cdu->cdda_volume[0], cdu->cdda_volume[1]);
 			if (!cda->play (bufnum)) {
-				setstate (cdu, AUDIO_STATUS_PLAY_ERROR);
+				if (cdu->cdda_play > 0)
+					setstate (cdu, AUDIO_STATUS_PLAY_ERROR);
 				goto end;
 			}
 
 			if (dofinish) {
-				setstate (cdu, AUDIO_STATUS_PLAY_COMPLETE);
+				if (cdu->cdda_play >= 0)
+					setstate (cdu, AUDIO_STATUS_PLAY_COMPLETE);
 				cdu->cdda_play = -1;
 				cdda_pos = cdu->cdda_end + 1;
 			}
@@ -626,6 +642,7 @@ end:
 
 	cdu->cdda_play = 0;
 	write_log (_T("IMAGE CDDA: thread killed\n"));
+	cdu->thread_active = false;
 	return NULL;
 }
 
@@ -634,9 +651,10 @@ static void cdda_stop (struct cdunit *cdu)
 {
 	if (cdu->cdda_play != 0) {
 		cdu->cdda_play = -1;
-		while (cdu->cdda_play) {
+		while (cdu->cdda_play && cdu->thread_active) {
 			Sleep (10);
 		}
+		cdu->cdda_play = 0;
 	}
 	cdu->cdda_paused = 0;
 	cdu->cdda_play_state = 0;
@@ -668,6 +686,12 @@ static int command_play (int unitnum, int startlsn, int endlsn, int scan, play_s
 	struct cdunit *cdu = unitisopen (unitnum);
 	if (!cdu)
 		return 0;
+	if (cdu->cdda_play) {
+		cdu->cdda_play = -1;
+		while (cdu->thread_active)
+			Sleep (10);
+		cdu->cdda_play = 0;
+	}
 	cdu->cd_last_pos = startlsn;
 	cdu->cdda_start = startlsn;
 	cdu->cdda_end = endlsn;
@@ -681,8 +705,11 @@ static int command_play (int unitnum, int startlsn, int endlsn, int scan, play_s
 		setstate (cdu, AUDIO_STATUS_PLAY_ERROR);
 		return 0;
 	}
-	if (!cdu->cdda_play)
+	if (!cdu->thread_active) {
 		uae_start_thread (_T("cdimage_cdda_play"), cdda_play_func, cdu, NULL);
+		while (!cdu->thread_active)
+			Sleep (10);
+	}
 	cdu->cdda_play++;
 	return 1;
 }
@@ -998,7 +1025,7 @@ static int readval (const TCHAR *s)
 #define MDS_MEDIUM_CD_RW        0x02 /* CD-RW */
 #define MDS_MEDIUM_DVD          0x10 /* DVD-ROM */
 #define MDS_MEDIUM_DVD_MINUS_R  0x12 /* DVD-R */
- 
+
 #define MDS_TRACKMODE_UNKNOWN       0x00
 #define MDS_TRACKMODE_AUDIO         0xA9 /* sector size = 2352 */
 #define MDS_TRACKMODE_MODE1         0xAA /* sector size = 2048 */
@@ -1049,14 +1076,14 @@ typedef struct {
     uae_u8 adr_ctl; /* Adr/Ctl */
     uae_u8 __dummy2__; /* Track flags? */
     uae_u8 point; /* Track number. (>0x99 is lead-in track) */
-    
+
     uae_u32 __dummy3__;
     uae_u8 min; /* Min */
     uae_u8 sec; /* Sec */
     uae_u8 frame; /* Frame */
     uae_u32 extra_offset; /* Start offset of this track's extra block. */
     uae_u16 sector_size; /* Sector size. */
-    
+
     uae_u8 __dummy4__[18];
     uae_u32 start_sector; /* Track start sector (PLBA). */
     uae_u64 start_offset; /* Track start offset. */
@@ -1171,6 +1198,7 @@ end:
 	return cdu->tracks;
 }
 
+#ifdef WITH_CHD
 static int parsechd (struct cdunit *cdu, struct zfile *zcue, const TCHAR *img)
 {
 	chd_error err;
@@ -1193,7 +1221,7 @@ static int parsechd (struct cdunit *cdu, struct zfile *zcue, const TCHAR *img)
 	}
 	cdu->chd_f = cf;
 	cdu->chd_cdf = cdf;
-	
+
 	const cdrom_toc *stoc = cdrom_get_toc (cdf);
 	cdu->tracks = stoc->numtrks;
 	uae_u32 hunkcnt = cf->hunk_count ();
@@ -1257,7 +1285,7 @@ static int parsechd (struct cdunit *cdu, struct zfile *zcue, const TCHAR *img)
 	}
 	return cdu->tracks;
 }
-
+#endif
 
 static int parseccd (struct cdunit *cdu, struct zfile *zcue, const TCHAR *img)
 {
@@ -1268,9 +1296,9 @@ static int parseccd (struct cdunit *cdu, struct zfile *zcue, const TCHAR *img)
 	struct cdtoc *t;
 	struct zfile *zimg, *zsub;
 	TCHAR fname[MAX_DPATH];
-	
+
 	write_log (_T("CCD TOC: '%s'\n"), img);
-	_tcscpy (fname, img);
+	_tcscpy (fname, zfile_getname(zcue));
 	TCHAR *ext = _tcsrchr (fname, '.');
 	if (ext)
 		*ext = 0;
@@ -1326,7 +1354,7 @@ static int parseccd (struct cdunit *cdu, struct zfile *zcue, const TCHAR *img)
 		}
 		if (cdu->tracks <= 0)
 			break;
-		
+
 		if (mode == 2) {
 
 			if (!_tcsnicmp (p, _T("SESSION="), 8)) {
@@ -1382,7 +1410,7 @@ static int parseccd (struct cdunit *cdu, struct zfile *zcue, const TCHAR *img)
 				trackmode = _tstol (p + 5);
 			if (trackmode < 0 || trackmode > 2)
 				continue;
-			
+
 		}
 
 	}
@@ -1460,7 +1488,7 @@ static int parsecue (struct cdunit *cdu, struct zfile *zcue, const TCHAR *img)
 		} else if (!_tcsnicmp (p, _T("TRACK"), 5)) {
 			int size;
 			TCHAR *tracktype;
-			
+
 			p += 5;
 			index0 = -1;
 			lastpregap = 0;
@@ -1692,10 +1720,11 @@ static int parse_image (struct cdunit *cdu, const TCHAR *img)
 			parseccd (cdu, zcue, img);
 		else if (!_tcsicmp (ext, _T("mds")))
 			parsemds (cdu, zcue, img);
-#if USE_CHD
+#ifdef WITH_CHD
 		else if (!_tcsicmp (ext, _T("chd")))
 			parsechd (cdu, zcue, img);
 #endif
+
 		if (oldcurdir[0])
 			my_setcurrentdir (oldcurdir, NULL);
 	}
@@ -1758,7 +1787,7 @@ static int parse_image (struct cdunit *cdu, const TCHAR *img)
 
 	cdu->blocksize = 2048;
 	cdu->cdsize = (uae_u64)cdu->toc[cdu->tracks].address * cdu->blocksize;
-	
+
 
 	zfile_fclose (zcue);
 	return 1;
@@ -1825,11 +1854,13 @@ static void unload_image (struct cdunit *cdu)
 		xfree (t->subdata);
 		xfree (t->extrainfo);
 	}
+#ifdef WITH_CHD
 	cdrom_close (cdu->chd_cdf);
 	cdu->chd_cdf = NULL;
 	if (cdu->chd_f)
 		cdu->chd_f->close();
 	cdu->chd_f = NULL;
+#endif
 	memset (cdu->toc, 0, sizeof cdu->toc);
 	cdu->tracks = 0;
 	cdu->cdsize = 0;

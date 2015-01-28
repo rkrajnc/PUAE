@@ -59,6 +59,7 @@
 #include "gfxboard.h"
 #include "misc.h"
 #include "keyboard.h"
+#include "tabletlibrary.h"
 #ifdef RETROPLATFORM
 #include "rp.h"
 #endif
@@ -249,14 +250,13 @@ void fixup_prefs_dimensions (struct uae_prefs *prefs)
 			if (ap->gfx_backbuffers >= 2)
 				ap->gfx_vflip = -1;
 		}
-	}
-
-	if (prefs->gfx_filter == 0 && ((prefs->gfx_filter_autoscale && !prefs->gfx_api) || (prefs->gfx_apmode[0].gfx_vsyncmode))) {
-		prefs->gfx_filter = 1;
-	}
-	if (prefs->gfx_filter == 0 && prefs->monitoremu) {
-		error_log (_T("A2024 and Graffiti require at least null filter enabled."));
-		prefs->gfx_filter = 1;
+		if (prefs->gf[i].gfx_filter == 0 && ((prefs->gf[i].gfx_filter_autoscale && !prefs->gfx_api) || (prefs->gfx_apmode[APMODE_NATIVE].gfx_vsyncmode))) {
+			prefs->gf[i].gfx_filter = 1;
+		}
+		if (i == 0 && prefs->gf[i].gfx_filter == 0 && prefs->monitoremu) {
+			error_log (_T("A2024 and Graffiti require at least null filter enabled."));
+			prefs->gf[i].gfx_filter = 1;
+		}
 	}
 }
 
@@ -382,7 +382,7 @@ void fixup_prefs (struct uae_prefs *p)
 			p->rtgmem_size = 0;
 		err = 1;
 	}
-	
+
 	if (p->z3fastmem_size > max_z3fastmem) {
 		error_log (_T("Zorro III fastmem size %d (0x%x) larger than max reserved %d (0x%x)."), p->z3fastmem_size, p->z3fastmem_size, max_z3fastmem, max_z3fastmem);
 		p->z3fastmem_size = max_z3fastmem;
@@ -660,10 +660,12 @@ static int default_config;
 
 void uae_reset (int hardreset, int keyboardreset)
 {
+#ifdef DEBUGGER
 	if (debug_dma) {
 		record_dma_reset ();
 		record_dma_reset ();
 	}
+#endif
 	currprefs.quitstatefile[0] = changed_prefs.quitstatefile[0] = 0;
 
 	if (quit_program == 0) {
@@ -678,7 +680,9 @@ void uae_reset (int hardreset, int keyboardreset)
 
 void uae_quit (void)
 {
+#ifdef DEBUGGER
 	deactivate_debugger ();
+#endif
 	if (quit_program != -UAE_QUIT)
 		quit_program = -UAE_QUIT;
 	target_quit ();
@@ -979,6 +983,7 @@ void do_leave_program (void)
 #endif
 #ifdef A2091
 	a2091_free ();
+	a3000scsi_free ();
 #endif
 #ifdef NCR
 	ncr_free ();
@@ -1060,6 +1065,12 @@ void virtualdevice_init (void)
 #if defined (BSDSOCKET)
 	bsdlib_install ();
 #endif
+#ifdef WITH_UAENATIVE
+	uaenative_install ();
+#endif
+#ifdef WITH_TABLETLIBRARY
+	tabletlib_install ();
+#endif
 }
 
 static int real_main2 (int argc, TCHAR **argv)
@@ -1139,7 +1150,6 @@ static int real_main2 (int argc, TCHAR **argv)
 #endif
 
 	fixup_prefs (&currprefs);
-
 #ifdef RETROPLATFORM
 	rp_fixup_options (&currprefs);
 #endif
@@ -1233,11 +1243,13 @@ void real_main (int argc, TCHAR **argv)
 }
 
 #ifndef NO_MAIN_IN_MAIN_C
+#ifndef __native_client__
 int main (int argc, TCHAR **argv)
 {
 	real_main (argc, argv);
 	return 0;
 }
+#endif  /* __native_client */
 #endif
 
 #ifdef SINGLEFILE

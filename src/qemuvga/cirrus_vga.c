@@ -39,7 +39,7 @@
 #include "qemuuaeglue.h"
 #endif
 #include <string.h> /* memmove */
- 
+
 /*
  * TODO:
  *    - destination write mask support not complete (bits 5..7)
@@ -1116,8 +1116,8 @@ static void cirrus_get_resolution(VGACommonState *s, int *pwidth, int *pheight)
 		width *= 2;
 		break;
 		}
-	}	
-	
+	}
+
 	height = s->cr[0x12] |
         ((s->cr[0x07] & 0x02) << 7) |
         ((s->cr[0x07] & 0x40) << 3);
@@ -1181,14 +1181,14 @@ static void cirrus_valid_memory_config(CirrusVGAState *s)
 {
 	s->valid_memory_config = 1;
 	if (s->device_id >= CIRRUS_ID_CLGD5426 && s->device_id <= CIRRUS_ID_CLGD5430) {
-		// '26/28/29 can't have 2M and 256kx16 memory config
+		// '26/28/29 can't have 2M and 512kx16 memory config
 		// Amiga CyberGraphX uses this to detect memory size
 		// by writing long and then reading it back, if SRF[7]
 		// set and test value reads correct: memory size = 2M.
-		if (s->vga.vram_size_mb == 1 && (s->vga.sr[0xf] & 0x80))
+		if (s->vga.vram_size_mb == 2 && !(s->vga.sr[0xf] & 0x80))
 			s->valid_memory_config = 0;
 	} else if (s->device_id >= CIRRUS_ID_CLGD5434) {
-		// SRF[7] must be set for 4M VRAM chips
+		// SRF[7] must be set for 4M VRAM size
 		if (s->vga.vram_size_mb == 4 && !(s->vga.sr[0xf] & 0x80))
 			s->valid_memory_config = 0;
 	}
@@ -1324,7 +1324,7 @@ static void cirrus_vga_write_sr(CirrusVGAState * s, uint32_t val)
     case 0x0f:			// DRAM Control
 	s->vga.sr[s->vga.sr_index] = val;
 	cirrus_valid_memory_config(s);
-	break;		
+	break;
 	case 0x07:			// Extended Sequencer Mode
     cirrus_update_memory_access(s);
     case 0x08:			// EEPROM Control
@@ -3039,7 +3039,7 @@ static void isa_cirrus_vga_class_init(ObjectClass *klass, void *data)
 
 static const TypeInfo isa_cirrus_vga_info = {
     .name          = TYPE_ISA_CIRRUS_VGA,
-    .parent        = TYPE_ISA_DEVICE,mun 
+    .parent        = TYPE_ISA_DEVICE,mun
     .instance_size = sizeof(ISACirrusVGAState),
     .class_init = isa_cirrus_vga_class_init,
 };

@@ -143,7 +143,7 @@ void fsdb_clean_dir (a_inode *dir)
 			fseek (f, pos1, SEEK_SET);
 			size_t isWritten = fwrite (buf, 1, sizeof buf, f);
 			if (isWritten < sizeof(buf))
-				write_log("%s:%d [%s] - Failed to write %l bytes (%l/%d)",
+				write_log("%s:%d [%s] - Failed to write %ld bytes (%ld/%ld)",
 							 __FILE__, __LINE__, __FUNCTION__,
 							sizeof(buf) - isWritten, isWritten, sizeof(buf));
 			fseek (f, pos2 + sizeof buf, SEEK_SET);
@@ -207,7 +207,7 @@ a_inode *fsdb_lookup_aino_aname (a_inode *base, const TCHAR *aname)
 		xfree (s);
 	}
 	fclose (f);
-    return 0;
+	return 0;
 }
 
 a_inode *fsdb_lookup_aino_nname (a_inode *base, const TCHAR *nname)
@@ -222,19 +222,19 @@ a_inode *fsdb_lookup_aino_nname (a_inode *base, const TCHAR *nname)
 		return 0;
 	}
 	s = ua (nname);
-    for (;;) {
+	for (;;) {
 		uae_u8 buf[1 + 4 + 257 + 257 + 81];
 		if (fread (buf, 1, sizeof buf, f) < sizeof buf)
-		    break;
+			break;
 		if (buf[0] != 0 && strcmp ((char*)buf + 5 + 257, s) == 0) {
-		    long pos = ftell (f) - sizeof buf;
-		    fclose (f);
+			long pos = ftell (f) - sizeof buf;
+			fclose (f);
 			xfree (s);
-		    return aino_from_buf (base, buf, pos);
+			return aino_from_buf (base, buf, pos);
 		}
-    }
+	}
 	xfree (s);
-    fclose (f);
+	fclose (f);
 	return 0;
 }
 
@@ -296,7 +296,7 @@ static void write_aino (FILE *f, a_inode *aino)
 	aino->db_offset = ftell (f);
 	size_t isWritten = fwrite (buf, 1, sizeof buf, f);
 	if (isWritten < sizeof(buf))
-		write_log("%s:%d [%s] - Failed to write %l bytes (%l/%d)",
+		write_log("%s:%d [%s] - Failed to write %ld bytes (%ld/%ld)",
 							 __FILE__, __LINE__, __FUNCTION__,
 					sizeof(buf) - isWritten, isWritten, sizeof(buf));
 	aino->has_dbentry = aino->needs_dbentry;
@@ -370,7 +370,7 @@ void fsdb_dir_writeback (a_inode *dir)
 		tmpbuf = (uae_u8*)malloc (size);
 		size_t isRead = fread (tmpbuf, 1, size, f);
 		if (isRead < (size_t)size)
-			write_log("%s:%d [%s] - Failed to read %l bytes (%l/%d)",
+			write_log("%s:%d [%s] - Failed to read %ld bytes (%ld/%d)",
 						__FILE__, __LINE__, __FUNCTION__,
 						(size_t)size - isRead, isRead, size);
 	}

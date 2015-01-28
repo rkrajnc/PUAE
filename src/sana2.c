@@ -116,7 +116,7 @@
 #define SANA2OPF_MINE   (1<<SANA2OPB_MINE)
 #define SANA2OPB_PROM   1
 #define SANA2OPF_PROM   (1<<SANA2OPB_PROM)
-#define SANA2IOB_RAW    7 
+#define SANA2IOB_RAW    7
 #define SANA2IOF_RAW    (1<<SANA2IOB_RAW)
 #define SANA2IOB_BCAST  6
 #define SANA2IOF_BCAST  (1<<SANA2IOB_BCAST)
@@ -1540,7 +1540,7 @@ uaecptr netdev_startup (uaecptr resaddr)
 	if (!currprefs.sana2)
 		return resaddr;
 	/* Build a struct Resident. This will set up and initialize
-	* the uaescsi.device */
+	* the uaenet.device */
 	put_word (resaddr + 0x0, 0x4AFC);
 	put_long (resaddr + 0x2, resaddr);
 	put_long (resaddr + 0x6, resaddr + 0x1A); /* Continue scan here */
@@ -1548,7 +1548,7 @@ uaecptr netdev_startup (uaecptr resaddr)
 	put_word (resaddr + 0xC, 0x0305); /* NT_DEVICE; pri 05 */
 	put_long (resaddr + 0xE, ROM_netdev_resname);
 	put_long (resaddr + 0x12, ROM_netdev_resid);
-	put_long (resaddr + 0x16, ROM_netdev_init); /* calls scsidev_init */
+	put_long (resaddr + 0x16, ROM_netdev_init); /* calls netdev_init */
 	resaddr += 0x1A;
 	return resaddr;
 }
@@ -1561,6 +1561,7 @@ void netdev_install (void)
 
 	if (!currprefs.sana2)
 		return;
+
 	uaenet_enumerate_free (td);
 	uaenet_enumerate (&td, NULL);
 
